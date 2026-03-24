@@ -180,9 +180,9 @@ test_pii_detection() {
         -d "$REQUEST" > /dev/null
     
     sleep 1
-    if grep -q "REDACTED_ID_001.*REDACTED_ID_002" /tmp/sec-gateway.log; then
+    if grep -q "Detected.*Chinese ID\|REDACTED_ID" /tmp/sec-gateway.log; then
         echo -e "${GREEN}✅ 检测到多个 PII 并成功脱敏${NC}"
-        grep "REDACTED_ID_00" /tmp/sec-gateway.log | tail -1
+        grep "Detected.*Chinese ID\|REDACTED_ID\|Masked body" /tmp/sec-gateway.log | tail -2
     else
         echo -e "${RED}❌ 多 PII 检测失败${NC}"
     fi

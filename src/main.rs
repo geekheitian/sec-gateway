@@ -116,9 +116,12 @@ async fn proxy_handler(
     if !detections.is_empty() {
         tracing::info!("Detected {} Chinese ID(s) in request", detections.len());
         let masked_body = mask_with_placeholder(&body_str, &detections, "[REDACTED_ID", "]");
+        tracing::info!("Masked body preview: {}", 
+            masked_body.chars().take(200).collect::<String>());
         
         req = Request::from_parts(parts, Body::from(masked_body));
     } else {
+        tracing::debug!("No PII detected, forwarding original request");
         req = Request::from_parts(parts, Body::from(body_bytes.to_vec()));
     }
 
