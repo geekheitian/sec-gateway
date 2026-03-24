@@ -119,19 +119,27 @@ test_health_check() {
     echo ""
     echo -e "${BLUE}[5/7] 测试健康检查端点...${NC}"
     
-    if $HAS_JQ; then
-        RESPONSE=$(curl -s http://localhost:8080/health | jq .)
-    else
-        RESPONSE=$(curl -s http://localhost:8080/health)
-    fi
+    RESPONSE=$(curl -s http://localhost:8080/health)
     
-    if echo "$RESPONSE" | grep -q "\"status\":\"ok\""; then
-        echo -e "${GREEN}✅ 健康检查通过${NC}"
-        echo "$RESPONSE"
+    if $HAS_JQ; then
+        STATUS=$(echo "$RESPONSE" | jq -r '.status' 2>/dev/null)
+        if [ "$STATUS" = "ok" ]; then
+            echo -e "${GREEN}✅ 健康检查通过${NC}"
+            echo "$RESPONSE" | jq .
+        else
+            echo -e "${RED}❌ 健康检查失败 (status: $STATUS)${NC}"
+            echo "$RESPONSE" | jq .
+            exit 1
+        fi
     else
-        echo -e "${RED}❌ 健康检查失败${NC}"
-        echo "$RESPONSE"
-        exit 1
+        if echo "$RESPONSE" | grep -q '"status".*"ok"'; then
+            echo -e "${GREEN}✅ 健康检查通过${NC}"
+            echo "$RESPONSE"
+        else
+            echo -e "${RED}❌ 健康检查失败${NC}"
+            echo "$RESPONSE"
+            exit 1
+        fi
     fi
     
     echo ""
