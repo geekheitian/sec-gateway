@@ -87,9 +87,14 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+    
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_load_default_config() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        
         std::env::remove_var("SERVER_PORT");
         std::env::remove_var("SERVER_HOST");
         std::env::remove_var("TARGET_URL");
@@ -106,6 +111,11 @@ mod tests {
 
     #[test]
     fn test_env_override() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        
+        std::env::remove_var("SERVER_PORT");
+        std::env::remove_var("TARGET_URL");
+        
         std::env::set_var("SERVER_PORT", "9090");
         std::env::set_var("TARGET_URL", "http://test.example.com");
         
