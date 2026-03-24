@@ -31,3 +31,8 @@ logs/
 # Sisyphus (保留规划文档)
 .sisyphus/state/
 .sisyphus/tmp/
+
+
+# Added by cargo
+
+/target
