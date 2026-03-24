@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sec-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - RUST_LOG=debug
+      - TARGET_URL=http://llm-mock:8081/v1/chat/completions
+    networks:
+      - privacy-net
+    depends_on:
+      - llm-mock
+    restart: unless-stopped
+
+  llm-mock:
+    image: alpine:latest
+    container_name: llm-mock
+    ports:
+      - "8081:8081"
+    networks:
+      - privacy-net
+    command: >
+      sh -c "apk add --no-cache python3 py3-pip &&
+             python3 -m http.server 8081 --bind 0.0.0.0 --directory /tmp"
+    restart: unless-stopped
+
+networks:
+  privacy-net:
+    driver: bridge

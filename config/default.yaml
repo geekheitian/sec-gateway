@@ -1,0 +1,29 @@
+server:
+  host: "0.0.0.0"
+  port: 8080
+  log_level: "debug"
+
+proxy:
+  target_url: "https://api.openai.com/v1/chat/completions"
+  timeout_seconds: 30
+  max_retries: 3
+
+pii:
+  types:
+    - chinese_id
+  masking_strategy: "replace"
+  
+  detectors:
+    chinese_id:
+      pattern: '^\d{17}[\dXx]$'
+      confidence_threshold: 0.9
+
+security:
+  rate_limit:
+    requests_per_minute: 60
+    burst_size: 10
+  
+  cors:
+    enabled: true
+    allowed_origins:
+      - "*"
