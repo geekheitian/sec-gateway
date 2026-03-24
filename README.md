@@ -1,10 +1,15 @@
 # Privacy Gateway
 
+[![GitHub](https://img.shields.io/badge/github-geekheitian/sec--gateway-blue?logo=github)](https://github.com/geekheitian/sec-gateway)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 隐私保护AI网关 - 保护敏感数据，安全对接大模型
 
 ## 项目状态
 
 🚧 **开发中** - Phase 0.5: 原型验证阶段
+
+**仓库地址**: https://github.com/geekheitian/sec-gateway
 
 ## 技术栈
 
