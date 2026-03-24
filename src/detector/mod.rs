@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 pub mod chinese_id;
 pub mod phone;
 pub mod email;
+pub mod entropy;
+pub mod api_key;
 
 /// PII类型枚举
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -3,4 +3,5 @@
 //! 本模块提供敏感信息的脱敏功能
 
 pub mod replace;
+pub mod hash;
 
