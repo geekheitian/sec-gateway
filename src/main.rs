@@ -3,6 +3,7 @@ mod detector;
 mod masker;
 mod crypto;
 mod config;
+mod vault;
 
 use axum::{
     routing::{any, get},
