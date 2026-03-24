@@ -1,0 +1,33 @@
+# Rust
+target/
+Cargo.lock
+**/*.rs.bk
+*.pdb
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Config
+config/local.yaml
+*.key
+*.pem
+
+# Logs
+*.log
+logs/
+
+# Env
+.env
+.env.local
+
+# Sisyphus (保留规划文档)
+.sisyphus/state/
+.sisyphus/tmp/
