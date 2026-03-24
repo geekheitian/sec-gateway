@@ -101,6 +101,37 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 
 ---
 
+## 🤖 命令行 AI 助手
+
+`ai.sh` 会把命令后面的文本作为 prompt 发送到可配置的模型接口，并把回复直接打印出来。
+
+```bash
+chmod +x ai.sh
+AI_API_KEY=sk-xxx ./ai.sh 你好 世界
+```
+
+也可以从标准输入读取：
+
+```bash
+echo "你好 世界" | ./ai.sh
+```
+
+可用环境变量：
+
+- `AI_PROVIDER`：`openai`、`anthropic` 或 `auto`
+- `AI_BASE_URL`：OpenAI 兼容接口地址，默认 `https://api.openai.com/v1/chat/completions`
+- `ANTHROPIC_BASE_URL`：Anthropic 兼容接口地址，例如 `https://api.minimaxi.com/anthropic`
+- `AI_API_KEY`：API Key，也会回退读取 `OPENAI_API_KEY`、`ANTHROPIC_AUTH_TOKEN` 或 `MINIMAX_API_KEY`
+- `AI_MODEL`：模型名，默认 `gpt-4o-mini`
+- `ANTHROPIC_MODEL`：Anthropic 模式下的模型名回退
+- `AI_SYSTEM_PROMPT`：可选系统提示词
+- `AI_TEMPERATURE`：采样温度，默认 `0.2`
+- `AI_MAX_TOKENS`：可选最大输出长度；Anthropic 模式下默认 `1024`
+
+如果你已经在 shell 里导出了 `MINIMAX_API_KEY`，或者设置了 `ANTHROPIC_BASE_URL` / `ANTHROPIC_MODEL`，`ai.sh` 会自动优先使用 Anthropic/MiniMax 模式，并自动补齐到 `/v1/messages` 路径。
+
+---
+
 ## 🏗️ 技术栈
 
 | 组件 | 技术 | 版本 |

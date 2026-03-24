@@ -30,7 +30,7 @@ fn test_e2e_pii_masking_flow_chinese_id() {
     let mut offset: i64 = 0;
     
     for (idx, pii) in detections.iter().enumerate() {
-        let token = cipher.encrypt(&pii.value).unwrap();
+        let token = cipher.encrypt(&pii.value, session_id.as_bytes()).unwrap();
         vault.store(session_id, token.clone(), pii.value.clone()).unwrap();
         
         let start = (pii.start as i64 + offset) as usize;
@@ -43,7 +43,7 @@ fn test_e2e_pii_masking_flow_chinese_id() {
         assert_eq!(token.len(), 18, "FPE preserves format length");
     }
     
-    let retrieved = vault.retrieve(session_id, &cipher.encrypt("110101199001011234").unwrap()).unwrap();
+    let retrieved = vault.retrieve(session_id, &cipher.encrypt("110101199001011234", session_id.as_bytes()).unwrap()).unwrap();
     assert_eq!(retrieved, Some("110101199001011234".to_string()));
 }
 
@@ -64,7 +64,7 @@ fn test_e2e_pii_masking_flow_phone() {
     let mut offset: i64 = 0;
     
     for pii in &detections {
-        let token = cipher.encrypt(&pii.value).unwrap();
+        let token = cipher.encrypt(&pii.value, session_id.as_bytes()).unwrap();
         vault.store(session_id, token.clone(), pii.value.clone()).unwrap();
         
         let start = (pii.start as i64 + offset) as usize;
@@ -75,7 +75,7 @@ fn test_e2e_pii_masking_flow_phone() {
         assert!(!masked_body.contains("13812345678"), "Original phone should NOT be in masked body");
     }
     
-    let retrieved = vault.retrieve(session_id, &cipher.encrypt("13812345678").unwrap()).unwrap();
+    let retrieved = vault.retrieve(session_id, &cipher.encrypt("13812345678", session_id.as_bytes()).unwrap()).unwrap();
     assert_eq!(retrieved, Some("13812345678".to_string()));
 }
 
@@ -138,7 +138,7 @@ fn test_e2e_multiple_pii_types_single_request() {
     
     for pii in &all_matches {
         let token = match pii.pii_type {
-            PIIType::ChineseID | PIIType::PhoneNumber => cipher.encrypt(&pii.value).unwrap(),
+            PIIType::ChineseID | PIIType::PhoneNumber => cipher.encrypt(&pii.value, session_id.as_bytes()).unwrap(),
             PIIType::APIKey | PIIType::GitHubToken | PIIType::AWSAccessKey | 
             PIIType::AWSSecretKey | PIIType::APISecret => hash_value(&pii.value),
             PIIType::Email => format!("[REDACTED_EMAIL]"),
@@ -204,7 +204,7 @@ fn test_e2e_zero_data_leakage() {
             
             for pii in &all_matches {
                 let token = match pii.pii_type {
-                    PIIType::ChineseID | PIIType::PhoneNumber => cipher.encrypt(&pii.value).unwrap(),
+                    PIIType::ChineseID | PIIType::PhoneNumber => cipher.encrypt(&pii.value, b"test-session").unwrap(),
                     _ => hash_value(&pii.value),
                 };
                 
@@ -227,8 +227,8 @@ fn test_e2e_fpe_deterministic_encryption() {
     
     let id = "110101199001011234";
     
-    let encrypted1 = cipher.encrypt(id).unwrap();
-    let encrypted2 = cipher.encrypt(id).unwrap();
+    let encrypted1 = cipher.encrypt(id, b"test-session").unwrap();
+    let encrypted2 = cipher.encrypt(id, b"test-session").unwrap();
     
     assert_eq!(encrypted1, encrypted2, "FPE should be deterministic");
     assert_ne!(encrypted1, id, "Encrypted should differ from original");

@@ -7,6 +7,7 @@ mod vault;
 
 use axum::{
     routing::{any, get},
+    response::Response,
     Router,
     Json,
     body::Body,
@@ -27,7 +28,7 @@ use detector::{
 };
 use masker::hash::hash_value;
 use crypto::fpe::FPECipher;
-use vault::PrivacyVault;
+use vault::{PrivacyVault, Reverser};
 use config::Config;
 
 #[derive(Clone)]
@@ -36,6 +37,7 @@ struct AppState {
     config: Arc<Config>,
     vault: PrivacyVault,
     fpe_cipher: Arc<FPECipher>,
+    reverser: Reverser,
 }
 
 #[tokio::main]
@@ -84,17 +86,46 @@ async fn main() {
     tracing::info!("Target URL: {}", config.proxy.target_url);
     tracing::info!("PII types enabled: {:?}", config.pii.types);
 
-    let fpe_key = [0u8; 32]; // TODO: Load from config
+    let fpe_key = std::env::var("FPE_KEY")
+        .map(|key_str| {
+            let key_bytes: &[u8] = key_str.as_bytes();
+            let mut key = [0u8; 32];
+            if key_bytes.len() != 64 {
+                panic!("FPE_KEY must be 64 hex characters (32 bytes)");
+            }
+            for (i, chunk) in key_bytes.chunks(2).enumerate() {
+                key[i] = u8::from_str_radix(std::str::from_utf8(chunk).unwrap(), 16)
+                    .expect("FPE_KEY must be hex encoded");
+            }
+            key
+        })
+        .unwrap_or_else(|_| {
+            panic!("FPE_KEY environment variable must be set");
+        });
     let fpe_cipher = Arc::new(FPECipher::new(&fpe_key, 10)
         .expect("Failed to initialize FPE cipher"));
     let vault = PrivacyVault::new();
 
+    let vault_cleanup = vault.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(300));
+        loop {
+            interval.tick().await;
+            let removed = vault_cleanup.cleanup_stale_sessions(1800);
+            if removed > 0 {
+                tracing::info!("Cleaned up {} stale session(s)", removed);
+            }
+        }
+    });
+
+    let reverser = Reverser::new(vault.clone(), fpe_key);
     let proxy_client = Arc::new(ProxyClient::new(config.proxy.target_url.clone()));
     let state = AppState { 
         proxy_client,
         config: Arc::new(config.clone()),
         vault,
         fpe_cipher,
+        reverser,
     };
 
     let app = Router::new()
@@ -128,7 +159,6 @@ async fn proxy_handler(
         .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read body: {}", e)))?;
 
     let body_str = String::from_utf8_lossy(&body_bytes);
-    tracing::debug!("Request body preview: {}", body_str.chars().take(200).collect::<String>());
     
     let mut all_matches = Vec::new();
     
@@ -159,7 +189,7 @@ async fn proxy_handler(
         let original_value = &pii_match.value;
         let token = match pii_match.pii_type {
             PIIType::ChineseID | PIIType::PhoneNumber => {
-                let encrypted = state.fpe_cipher.encrypt(original_value)
+                let encrypted = state.fpe_cipher.encrypt(original_value, session_id.as_bytes())
                     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("FPE encryption failed: {}", e)))?;
                 encrypted
             },
@@ -191,7 +221,21 @@ async fn proxy_handler(
     req = Request::from_parts(parts, Body::from(masked_body));
     
     tracing::debug!("Proxying request to target");
-    state.proxy_client.forward_request(req).await
+    let response = state.proxy_client.forward_request(req).await?;
+    
+    let (parts, body) = response.into_parts();
+    let body_bytes = axum::body::to_bytes(body, usize::MAX)
+        .await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Read response body failed: {}", e)))?;
+    let body_str = String::from_utf8_lossy(&body_bytes);
+    
+    let restored_body = state.reverser.restore_response(&session_id, &body_str)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Response restoration failed: {}", e)))?;
+    
+    tracing::debug!("Response restored for session {}", session_id);
+    
+    let response = Response::from_parts(parts, restored_body.into());
+    Ok(response)
 }
 
 fn extract_session_id(parts: &axum::http::request::Parts) -> String {

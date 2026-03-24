@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
+use std::time::Instant;
 
 pub mod reverser;
 
 pub use reverser::Reverser;
 
 pub struct PrivacyVault {
-    storage: Arc<RwLock<HashMap<String, HashMap<String, String>>>>,
+    storage: Arc<RwLock<HashMap<String, (HashMap<String, String>, Instant)>>>,
 }
 
 impl PrivacyVault {
@@ -20,8 +21,8 @@ impl PrivacyVault {
         let mut storage = self.storage.write()
             .map_err(|e| format!("Failed to acquire write lock: {}", e))?;
         
-        let session = storage.entry(session_id.to_string()).or_insert_with(HashMap::new);
-        session.insert(token, original_value);
+        let session = storage.entry(session_id.to_string()).or_insert_with(|| (HashMap::new(), Instant::now()));
+        session.0.insert(token, original_value);
         
         Ok(())
     }
@@ -31,7 +32,7 @@ impl PrivacyVault {
             .map_err(|e| format!("Failed to acquire read lock: {}", e))?;
         
         Ok(storage.get(session_id)
-            .and_then(|session| session.get(token))
+            .and_then(|session| session.0.get(token))
             .cloned())
     }
 
@@ -43,6 +44,25 @@ impl PrivacyVault {
         Ok(())
     }
 
+    pub fn cleanup_stale_sessions(&self, max_age_secs: u64) -> usize {
+        let cutoff = Instant::now() - std::time::Duration::from_secs(max_age_secs);
+        let mut storage = match self.storage.write() {
+            Ok(s) => s,
+            Err(_) => return 0,
+        };
+        
+        let stale: Vec<String> = storage.iter()
+            .filter(|(_, (_, created))| *created < cutoff)
+            .map(|(sid, _)| sid.clone())
+            .collect();
+        
+        let count = stale.len();
+        for sid in stale {
+            storage.remove(&sid);
+        }
+        count
+    }
+
     pub fn session_count(&self) -> usize {
         self.storage.read().map(|s| s.len()).unwrap_or(0)
     }
@@ -50,7 +70,7 @@ impl PrivacyVault {
     pub fn token_count(&self, session_id: &str) -> usize {
         self.storage.read()
             .ok()
-            .and_then(|s| s.get(session_id).map(|session| session.len()))
+            .and_then(|s| s.get(session_id).map(|session| session.0.len()))
             .unwrap_or(0)
     }
 }
