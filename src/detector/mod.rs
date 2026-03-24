@@ -4,4 +4,3 @@
 
 pub mod chinese_id;
 
-pub use chinese_id::detect_chinese_id;

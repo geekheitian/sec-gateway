@@ -4,4 +4,3 @@
 
 pub mod replace;
 
-pub use replace::{mask_with_custom_placeholder, mask_with_placeholder};

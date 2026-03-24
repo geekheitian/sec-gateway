@@ -1,6 +1,7 @@
 mod proxy;
 mod detector;
 mod masker;
+mod crypto;
 
 use axum::{
     routing::{any, get},
