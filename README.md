@@ -128,8 +128,10 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 
 - ✅ **Phase 0.5** (已完成) - 原型验证 + 项目骨架
 - ✅ **Phase 1 MVP** (Week 3-5) - 8种PII类型 + FPE加密 + Vault + 流式响应
-- ⏳ **Phase 2** (Week 6-8) - v1.0：CLI + 性能优化 + 15种PII
-- ⏳ **Phase 3** (Week 9-11) - v2.0：NER模型 + WebUI
+- ⏳ **Phase 2A** (Week 6) - Provider abstraction + multi-provider support
+- ⏳ **Phase 2B** (Week 7) - PII expansion: 8→15 types + config-driven detection
+- ⏳ **Phase 2C** (Week 8) - Observability: logging, metrics, session ops
+- ⏳ **Phase 3** (Week 9-11) - v2.0: Web Dashboard + NER model integration
 
 ---
 
