@@ -53,6 +53,7 @@ pub fn mask_with_placeholder(
 ///
 /// # 返回值
 /// 返回脱敏后的文本
+#[allow(dead_code)]
 pub fn mask_with_custom_placeholder(
     text: &str,
     detections: &[(usize, usize, String)],
