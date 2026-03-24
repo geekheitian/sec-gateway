@@ -152,7 +152,7 @@ test_pii_detection() {
     
     # 测试用例 1: 多种 PII 类型
     echo -e "${YELLOW}测试用例 1: 多种 PII 类型（手机号、身份证、邮箱、API Key）${NC}"
-    REQUEST='{"model":"gpt-3.5-turbo","messages":[{"role":"user","content":"手机13812345678，身份证110101199001011234，邮箱test@example.com，API密钥sk-proj-AbCdEf1234567890XyZ"}]}'
+    REQUEST='{"model":"gpt-3.5-turbo","messages":[{"role":"user","content":"phone 13812345678 id 110101199001011234 email test@example.com key sk-proj-AbCdEf1234567890XyZ"}]}'
     
     echo "发送请求..."
     RESPONSE=$(curl -s -X POST http://localhost:8080/v1/chat/completions \
