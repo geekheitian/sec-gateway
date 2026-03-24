@@ -1,6 +1,10 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
+pub mod reverser;
+
+pub use reverser::Reverser;
+
 pub struct PrivacyVault {
     storage: Arc<RwLock<HashMap<String, HashMap<String, String>>>>,
 }

@@ -18,14 +18,24 @@ use std::{net::SocketAddr, sync::Arc};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use proxy::ProxyClient;
-use detector::chinese_id::detect_chinese_id;
-use masker::replace::mask_with_placeholder;
+use detector::{
+    chinese_id::detect_chinese_id,
+    phone::detect_phone_number,
+    email::detect_email,
+    api_key::detect_api_keys,
+    PIIMatch, PIIType,
+};
+use masker::hash::hash_value;
+use crypto::fpe::FPECipher;
+use vault::PrivacyVault;
 use config::Config;
 
 #[derive(Clone)]
 struct AppState {
     proxy_client: Arc<ProxyClient>,
     config: Arc<Config>,
+    vault: PrivacyVault,
+    fpe_cipher: Arc<FPECipher>,
 }
 
 #[tokio::main]
@@ -74,10 +84,17 @@ async fn main() {
     tracing::info!("Target URL: {}", config.proxy.target_url);
     tracing::info!("PII types enabled: {:?}", config.pii.types);
 
+    let fpe_key = [0u8; 32]; // TODO: Load from config
+    let fpe_cipher = Arc::new(FPECipher::new(&fpe_key, 10)
+        .expect("Failed to initialize FPE cipher"));
+    let vault = PrivacyVault::new();
+
     let proxy_client = Arc::new(ProxyClient::new(config.proxy.target_url.clone()));
     let state = AppState { 
         proxy_client,
         config: Arc::new(config.clone()),
+        vault,
+        fpe_cipher,
     };
 
     let app = Router::new()
@@ -111,21 +128,76 @@ async fn proxy_handler(
         .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read body: {}", e)))?;
 
     let body_str = String::from_utf8_lossy(&body_bytes);
+    tracing::debug!("Request body preview: {}", body_str.chars().take(200).collect::<String>());
     
-    let detections = detect_chinese_id(&body_str);
+    let mut all_matches = Vec::new();
     
-    if !detections.is_empty() {
-        tracing::info!("Detected {} Chinese ID(s) in request", detections.len());
-        let masked_body = mask_with_placeholder(&body_str, &detections, "[REDACTED_ID", "]");
-        tracing::info!("Masked body preview: {}", 
-            masked_body.chars().take(200).collect::<String>());
-        
-        req = Request::from_parts(parts, Body::from(masked_body));
-    } else {
+    let chinese_id_detections = detect_chinese_id(&body_str);
+    all_matches.extend(chinese_id_detections.into_iter().map(|(start, end, value)| {
+        PIIMatch::new(PIIType::ChineseID, value, start, end, 1.0)
+    }));
+    
+    all_matches.extend(detect_phone_number(&body_str));
+    all_matches.extend(detect_email(&body_str));
+    all_matches.extend(detect_api_keys(&body_str));
+    
+    if all_matches.is_empty() {
         tracing::debug!("No PII detected, forwarding original request");
         req = Request::from_parts(parts, Body::from(body_bytes.to_vec()));
+        return state.proxy_client.forward_request(req).await;
     }
-
+    
+    all_matches.sort_by_key(|m| m.start);
+    
+    let session_id = extract_session_id(&parts);
+    tracing::info!("Detected {} PII item(s) in session {}", all_matches.len(), session_id);
+    
+    let mut masked_body = body_str.to_string();
+    let mut offset: i64 = 0;
+    
+    for (idx, pii_match) in all_matches.iter().enumerate() {
+        let original_value = &pii_match.value;
+        let token = match pii_match.pii_type {
+            PIIType::ChineseID | PIIType::PhoneNumber => {
+                let encrypted = state.fpe_cipher.encrypt(original_value)
+                    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("FPE encryption failed: {}", e)))?;
+                encrypted
+            },
+            PIIType::APIKey | PIIType::APISecret | PIIType::AWSAccessKey | 
+            PIIType::AWSSecretKey | PIIType::GitHubToken => {
+                hash_value(original_value)
+            },
+            PIIType::Email => {
+                format!("[REDACTED_EMAIL_{:03}]", idx + 1)
+            },
+        };
+        
+        state.vault.store(&session_id, token.clone(), original_value.clone())
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Vault storage failed: {}", e)))?;
+        
+        let start = (pii_match.start as i64 + offset) as usize;
+        let end = (pii_match.end as i64 + offset) as usize;
+        
+        masked_body.replace_range(start..end, &token);
+        offset += token.len() as i64 - (pii_match.end - pii_match.start) as i64;
+        
+        tracing::debug!("Masked {} at position {}-{} with token: {}", 
+            pii_match.pii_type.as_str(), pii_match.start, pii_match.end, token);
+    }
+    
+    tracing::info!("Masked body preview: {}", 
+        masked_body.chars().take(200).collect::<String>());
+    
+    req = Request::from_parts(parts, Body::from(masked_body));
+    
     tracing::debug!("Proxying request to target");
     state.proxy_client.forward_request(req).await
+}
+
+fn extract_session_id(parts: &axum::http::request::Parts) -> String {
+    parts.headers
+        .get("x-session-id")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string())
 }

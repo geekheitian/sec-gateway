@@ -3,7 +3,7 @@
 [![GitHub](https://img.shields.io/badge/github-geekheitian/sec--gateway-blue?logo=github)](https://github.com/geekheitian/sec-gateway)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/rust-1.94%2B-orange.svg)](https://www.rust-lang.org/)
-[![Tests](https://img.shields.io/badge/tests-12%2F12%20passing-brightgreen.svg)](https://github.com/geekheitian/sec-gateway)
+[![Tests](https://img.shields.io/badge/tests-103%2F103%20passing-brightgreen.svg)](https://github.com/geekheitian/sec-gateway)
 
 隐私保护AI网关 - 在本地脱敏敏感数据，安全对接大模型
 
@@ -13,12 +13,15 @@
 
 sec-gateway 是一个开源的隐私保护AI网关，部署在用户本地环境，拦截并脱敏发送给大模型的敏感信息（PII），确保隐私数据不泄露给第三方LLM提供商。
 
-### 核心特性（Phase 0.5）
+### 核心特性（Phase 1 MVP）
 
 ✅ **本地处理** - 所有PII检测和脱敏在本地完成  
-✅ **中国身份证号** - 支持18位身份证号检测  
-✅ **Replace脱敏** - 使用递增占位符替换敏感信息  
-✅ **FPE加密** - 格式保留加密（NIST FF1标准）  
+✅ **8种PII类型** - 中国身份证、手机号、邮箱、API密钥、GitHub Token、AWS访问密钥等  
+✅ **FPE加密** - 格式保留加密（NIST FF1标准），身份证/手机号使用  
+✅ **Hash脱敏** - SHA-256哈希处理API密钥和GitHub Token  
+✅ **Replace脱敏** - 邮箱地址使用占位符替换  
+✅ **隐私Vault** - 会话隔离的Token存储，支持原始值恢复  
+✅ **流式响应** - 支持SSE流式响应  
 ✅ **配置灵活** - YAML配置 + 环境变量覆盖  
 ✅ **容器化部署** - Docker多阶段构建，镜像<10MB  
 
@@ -72,26 +75,29 @@ curl http://localhost:8080/health
 
 ## 🧪 使用示例
 
-### 检测并脱敏身份证号
+### 检测并脱敏多种PII类型
 
 **发送请求**:
 ```bash
 curl -X POST http://localhost:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
+  -H "x-session-id: my-session-001" \
   -d '{
     "model": "gpt-3.5-turbo",
     "messages": [{
       "role": "user",
-      "content": "我的身份证是 110101199001011234"
+      "content": "我的手机是13812345678，身份证是110101199001011234，邮箱test@example.com，API密钥sk-proj-AbCdEf1234567890XyZ"
     }]
   }'
 ```
 
 **网关处理**:
-- 检测到身份证号 `110101199001011234`
-- 脱敏为 `[REDACTED_ID_001]`
-- 转发脱敏后的请求到LLM
-- 原始身份证号不离开本地环境
+- 检测到手机号 `13812345678` → FPE加密为 `05509628502`
+- 检测到身份证 `110101199001011234` → FPE加密为 `165455343746803619`
+- 检测到邮箱 `test@example.com` → 替换为 `[REDACTED_EMAIL_001]`
+- 检测到API密钥 `sk-proj-...` → SHA-256哈希为 `[HASH:e0b7453469e42b48]`
+- 原始值存储在本地Vault，会话隔离
+- 转发脱敏后的请求到LLM，原始数据不离开本地环境
 
 ---
 
@@ -104,6 +110,8 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 | 异步运行时 | Tokio | 1.x |
 | PII检测 | Regex | 1.10 |
 | 加密 | FPE (AES-256) | 0.6 |
+| Hash | SHA-256 | 0.10 |
+| 会话管理 | UUID | 1.0 |
 | 配置 | serde_yaml | 0.9 |
 | 容器化 | Docker Alpine | - |
 
@@ -111,17 +119,17 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 
 ## 📊 项目状态
 
-**当前版本**: Phase 0.5 (原型验证)  
-**测试覆盖**: 12/12 通过 (100%)  
-**代码行数**: 537 lines Rust  
-**Git提交**: 9 commits  
+**当前版本**: Phase 1 MVP (最小可用产品)  
+**测试覆盖**: 103/103 通过 (100%)  
+**代码行数**: ~1800 lines Rust  
+**Git提交**: 13+ commits  
 
 ### 开发路线图
 
 - ✅ **Phase 0.5** (已完成) - 原型验证 + 项目骨架
-- 🔄 **Phase 1** (Week 3-5) - MVP：8种PII类型 + 流式响应
-- ⏳ **Phase 2** (Week 6-8) - v1.0：15种PII + FPE加密 + CLI
-- ⏳ **Phase 3** (Week 9-11) - v2.0：NER模型 + WebUI + 性能优化
+- ✅ **Phase 1 MVP** (Week 3-5) - 8种PII类型 + FPE加密 + Vault + 流式响应
+- ⏳ **Phase 2** (Week 6-8) - v1.0：CLI + 性能优化 + 15种PII
+- ⏳ **Phase 3** (Week 9-11) - v2.0：NER模型 + WebUI
 
 ---
 

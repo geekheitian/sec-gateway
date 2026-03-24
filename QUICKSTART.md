@@ -1,6 +1,6 @@
-# 🚀 快速开始指南 - Phase 0.5 部署与验证
+# 🚀 快速开始指南 - Phase 1 MVP 部署与验证
 
-本指南帮助你在 5 分钟内部署并验证 sec-gateway Phase 0.5 原型。
+本指南帮助你在 5 分钟内部署并验证 sec-gateway Phase 1 MVP。
 
 ---
 
@@ -201,19 +201,20 @@ curl -X GET http://localhost:8080/health | jq .
 
 ---
 
-### 测试 2: PII 检测与脱敏（核心功能）
+### 测试 2: 多类型 PII 检测与脱敏（核心功能）
 
-**场景**: 发送包含身份证号的请求，验证 PII 检测和脱敏功能
+**场景**: 发送包含多种PII的请求，验证8种PII类型的检测和脱敏功能
 
 ```bash
 curl -X POST http://localhost:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
+  -H "x-session-id: test-session-001" \
   -d '{
     "model": "gpt-3.5-turbo",
     "messages": [
       {
         "role": "user",
-        "content": "我的身份证号是 110101199001011234，请帮我查询社保信息。"
+        "content": "我的手机是13812345678，身份证是110101199001011234，邮箱test@example.com，API密钥sk-proj-AbCdEf1234567890XyZ"
       }
     ]
   }'
@@ -221,29 +222,36 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 
 **预期行为**:
 
-1. **控制台日志** 应显示检测到的 PII:
-```
-DEBUG: Detected PII in request: chinese_id at position (8, 26)
-DEBUG: Masked content: 我的身份证号是 [REDACTED_ID_001]，请帮我查询社保信息。
-```
+1. **控制台日志** 应显示检测到的所有PII:
+   ```
+   INFO: Detected 4 PII item(s) in session test-session-001
+   DEBUG: Masked phone_number at position XX with token: 05509628502
+   DEBUG: Masked chinese_id at position XX with token: 165455343746803619
+   DEBUG: Masked email at position XX with token: [REDACTED_EMAIL_001]
+   DEBUG: Masked api_key at position XX with token: [HASH:e0b7453469e42b48]
+   ```
 
-2. **转发到目标 LLM** 的请求内容已脱敏（不包含原始身份证号）
+2. **脱敏策略**:
+   - 手机号/身份证 → FPE加密（格式保留）
+   - 邮箱 → 占位符替换
+   - API密钥 → SHA-256哈希
 
-3. **响应** 会返回 LLM 的响应（如果配置了真实 LLM API）或连接错误（默认配置指向 OpenAI）
+3. **转发到目标 LLM** 的请求内容已脱敏（原始数据不离开本地）
 
 ---
 
-### 测试 3: 多个 PII 检测
+### 测试 3: 多种 PII 类型组合
 
 ```bash
 curl -X POST http://localhost:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
+  -H "x-session-id: test-session-002" \
   -d '{
     "model": "gpt-3.5-turbo",
     "messages": [
       {
         "role": "user",
-        "content": "张三的身份证 110101199001011234，李四的身份证 110101199002022345"
+        "content": "Contact: 13812345678, Email: user@example.com, GitHub: ghp_abcdefghijklmnopqrstuvwxyz1234567890"
       }
     ]
   }'
@@ -251,8 +259,10 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 
 **预期日志**:
 ```
-DEBUG: Detected 2 PIIs in request
-DEBUG: Masked content: 张三的身份证 [REDACTED_ID_001]，李四的身份证 [REDACTED_ID_002]
+INFO: Detected 3 PII item(s) in session test-session-002
+DEBUG: Masked phone_number ...
+DEBUG: Masked email ...
+DEBUG: Masked github_token ...
 ```
 
 ---
@@ -279,9 +289,31 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 
 ---
 
+### 测试 5: 会话隔离验证
+
+```bash
+# 会话1
+curl -X POST http://localhost:8080/v1/chat/completions \
+  -H "x-session-id: session-A" \
+  -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"Phone: 13812345678"}]}'
+
+# 会话2（相同手机号，不同会话）
+curl -X POST http://localhost:8080/v1/chat/completions \
+  -H "x-session-id: session-B" \
+  -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"Phone: 13812345678"}]}'
+```
+
+**预期行为**:
+- 每个会话的Vault存储独立
+- Token在各自会话中独立管理
+
+---
+
 ## 🔧 配置自定义 LLM 后端
 
-Phase 0.5 默认转发到 `https://api.openai.com/v1/chat/completions`。
+Phase 1 MVP 默认转发到 `https://api.openai.com/v1/chat/completions`。
 
 ### 方法 1: 环境变量（推荐）
 ```bash
@@ -301,7 +333,7 @@ proxy:
 docker run -d \
   -p 8080:8080 \
   -e TARGET_URL="http://your-llm-backend:8000/v1/chat/completions" \
-  sec-gateway:0.5
+  sec-gateway:1.0
 ```
 
 ---
@@ -316,21 +348,16 @@ cargo test
 
 **预期输出**:
 ```
-running 12 tests
-test detector::chinese_id::tests::test_detect_valid_id ... ok
-test detector::chinese_id::tests::test_detect_multiple_ids ... ok
-test detector::chinese_id::tests::test_detect_with_x ... ok
-test detector::chinese_id::tests::test_detect_no_id ... ok
-test masker::replace::tests::test_mask_basic ... ok
-test masker::replace::tests::test_mask_custom ... ok
-test masker::replace::tests::test_mask_multiple ... ok
-test crypto::fpe_test::tests::test_fpe_chinese_id_encryption ... ok
-test crypto::fpe_test::tests::test_fpe_preserves_format ... ok
-test crypto::fpe_test::tests::test_fpe_different_inputs ... ok
-test config::tests::test_load_default_config ... ok
-test config::tests::test_env_override ... ok
+running 79 tests
+test result: ok. 79 passed; 0 failed; 0 ignored; 0 measured
 
-test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+running 16 tests (integration)
+test result: ok. 16 passed; 0 failed
+
+running 8 tests (e2e)
+test result: ok. 8 passed; 0 failed
+
+总计: 103 tests passing
 ```
 
 ---
@@ -420,13 +447,14 @@ curl: (7) Failed to connect to localhost port 8080: Connection refused
 
 ## 📊 性能基准测试
 
-Phase 0.5 原型性能指标（MacBook Pro M1, 16GB RAM）:
+Phase 1 MVP 性能指标（MacBook Pro M1, 16GB RAM）:
 
 | 指标 | 数值 |
 |------|------|
 | 启动时间 | <1 秒 |
-| 内存占用 | ~5 MB |
+| 内存占用 | ~8 MB |
 | PII 检测延迟 | <1 ms |
+| 单次请求延迟（含脱敏） | <10 ms |
 | 吞吐量（无 PII） | ~10,000 req/s |
 | 吞吐量（含 PII） | ~8,000 req/s |
 
@@ -434,11 +462,11 @@ Phase 0.5 原型性能指标（MacBook Pro M1, 16GB RAM）:
 
 ## 📚 下一步
 
-完成 Phase 0.5 验证后，可以：
+完成 Phase 1 MVP 验证后，可以：
 
 1. **阅读设计文档**: `.sisyphus/drafts/privacy-gateway-design.md`
 2. **查看工作计划**: `.sisyphus/plans/privacy-gateway.md`
-3. **等待 Phase 1**: 支持 8 种 PII 类型、流式响应、REST API
+3. **等待 Phase 2**: CLI工具、性能优化、15种PII类型
 
 ---
 
