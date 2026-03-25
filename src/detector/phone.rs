@@ -1,5 +1,5 @@
-use regex::Regex;
 use super::{PIIMatch, PIIType};
+use regex::Regex;
 
 const PHONE_PATTERN: &str = r"\b1[3-9]\d{9}\b";
 
@@ -46,7 +46,12 @@ mod tests {
         for prefix in prefixes {
             let phone = format!("{}012345678", prefix);
             let results = detect_phone_number(&phone);
-            assert_eq!(results.len(), 1, "Failed to detect phone starting with {}", prefix);
+            assert_eq!(
+                results.len(),
+                1,
+                "Failed to detect phone starting with {}",
+                prefix
+            );
             assert_eq!(results[0].value, phone);
         }
     }

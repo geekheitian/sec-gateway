@@ -9,9 +9,7 @@ pub fn hash_value(value: &str) -> String {
 
 mod hex {
     pub fn encode(bytes: &[u8]) -> String {
-        bytes.iter()
-            .map(|b| format!("{:02x}", b))
-            .collect()
+        bytes.iter().map(|b| format!("{:02x}", b)).collect()
     }
 }
 
@@ -42,7 +40,10 @@ mod tests {
         let value2 = "sk-proj-DIFFERENT1234567890";
         let hash1 = hash_value(value1);
         let hash2 = hash_value(value2);
-        assert_ne!(hash1, hash2, "Different inputs should produce different hashes");
+        assert_ne!(
+            hash1, hash2,
+            "Different inputs should produce different hashes"
+        );
     }
 
     #[test]
@@ -51,7 +52,7 @@ mod tests {
         let hashed = hash_value(value);
         assert!(hashed.starts_with("[HASH:"));
         assert!(hashed.ends_with("]"));
-        let hex_part = &hashed[6..hashed.len()-1];
+        let hex_part = &hashed[6..hashed.len() - 1];
         assert_eq!(hex_part.len(), 16);
         assert!(hex_part.chars().all(|c| c.is_ascii_hexdigit()));
     }
@@ -84,7 +85,7 @@ mod tests {
         let value = "a".repeat(1000);
         let hashed = hash_value(&value);
         assert!(hashed.starts_with("[HASH:"));
-        let hex_part = &hashed[6..hashed.len()-1];
+        let hex_part = &hashed[6..hashed.len() - 1];
         assert_eq!(hex_part.len(), 16);
     }
 }

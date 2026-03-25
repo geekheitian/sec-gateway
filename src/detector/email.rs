@@ -1,5 +1,5 @@
-use regex::Regex;
 use super::{PIIMatch, PIIType};
+use regex::Regex;
 
 const EMAIL_PATTERN: &str = r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b";
 

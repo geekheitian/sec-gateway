@@ -88,21 +88,21 @@ impl Config {
 mod tests {
     use super::*;
     use std::sync::Mutex;
-    
+
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_load_default_config() {
         let _lock = ENV_LOCK.lock().unwrap();
-        
+
         std::env::remove_var("SERVER_PORT");
         std::env::remove_var("SERVER_HOST");
         std::env::remove_var("TARGET_URL");
         std::env::remove_var("RUST_LOG");
-        
+
         let config = Config::load_default();
         assert!(config.is_ok());
-        
+
         let config = config.unwrap();
         assert_eq!(config.server.host, "0.0.0.0");
         assert_eq!(config.server.port, 8080);
@@ -112,18 +112,18 @@ mod tests {
     #[test]
     fn test_env_override() {
         let _lock = ENV_LOCK.lock().unwrap();
-        
+
         std::env::remove_var("SERVER_PORT");
         std::env::remove_var("TARGET_URL");
-        
+
         std::env::set_var("SERVER_PORT", "9090");
         std::env::set_var("TARGET_URL", "http://test.example.com");
-        
+
         let config = Config::load_default().unwrap();
-        
+
         assert_eq!(config.server.port, 9090);
         assert_eq!(config.proxy.target_url, "http://test.example.com");
-        
+
         std::env::remove_var("SERVER_PORT");
         std::env::remove_var("TARGET_URL");
     }

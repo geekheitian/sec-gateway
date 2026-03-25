@@ -1,35 +1,31 @@
-mod proxy;
+mod config;
+mod crypto;
 mod detector;
 mod masker;
-mod crypto;
-mod config;
+mod proxy;
 mod vault;
 
 use axum::{
-    routing::{any, get},
-    response::Response,
-    Router,
-    Json,
     body::Body,
-    http::{Request, StatusCode},
     extract::State,
+    http::{Request, StatusCode},
+    response::Response,
+    routing::{any, get},
+    Json, Router,
 };
 use serde_json::{json, Value};
 use std::{net::SocketAddr, sync::Arc};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use proxy::ProxyClient;
+use config::Config;
+use crypto::fpe::FPECipher;
 use detector::{
-    chinese_id::detect_chinese_id,
-    phone::detect_phone_number,
-    email::detect_email,
-    api_key::detect_api_keys,
-    PIIMatch, PIIType,
+    api_key::detect_api_keys, chinese_id::detect_chinese_id, email::detect_email,
+    phone::detect_phone_number, PIIMatch, PIIType,
 };
 use masker::hash::hash_value;
-use crypto::fpe::FPECipher;
+use proxy::ProxyClient;
 use vault::{PrivacyVault, Reverser};
-use config::Config;
 
 #[derive(Clone)]
 struct AppState {
@@ -50,39 +46,38 @@ async fn main() {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let config = Config::load_default()
-        .unwrap_or_else(|e| {
-            tracing::warn!("Failed to load config file: {}, using defaults", e);
-            Config {
-                server: config::ServerConfig {
-                    host: "0.0.0.0".to_string(),
-                    port: 8080,
-                    log_level: "debug".to_string(),
+    let config = Config::load_default().unwrap_or_else(|e| {
+        tracing::warn!("Failed to load config file: {}, using defaults", e);
+        Config {
+            server: config::ServerConfig {
+                host: "0.0.0.0".to_string(),
+                port: 8080,
+                log_level: "debug".to_string(),
+            },
+            proxy: config::ProxyConfig {
+                target_url: std::env::var("TARGET_URL")
+                    .unwrap_or_else(|_| "https://api.openai.com/v1/chat/completions".to_string()),
+                timeout_seconds: 30,
+                max_retries: 3,
+            },
+            pii: config::PiiConfig {
+                types: vec!["chinese_id".to_string()],
+                masking_strategy: "replace".to_string(),
+                detectors: std::collections::HashMap::new(),
+            },
+            security: config::SecurityConfig {
+                rate_limit: config::RateLimitConfig {
+                    requests_per_minute: 60,
+                    burst_size: 10,
                 },
-                proxy: config::ProxyConfig {
-                    target_url: std::env::var("TARGET_URL")
-                        .unwrap_or_else(|_| "https://api.openai.com/v1/chat/completions".to_string()),
-                    timeout_seconds: 30,
-                    max_retries: 3,
+                cors: config::CorsConfig {
+                    enabled: true,
+                    allowed_origins: vec!["*".to_string()],
                 },
-                pii: config::PiiConfig {
-                    types: vec!["chinese_id".to_string()],
-                    masking_strategy: "replace".to_string(),
-                    detectors: std::collections::HashMap::new(),
-                },
-                security: config::SecurityConfig {
-                    rate_limit: config::RateLimitConfig {
-                        requests_per_minute: 60,
-                        burst_size: 10,
-                    },
-                    cors: config::CorsConfig {
-                        enabled: true,
-                        allowed_origins: vec!["*".to_string()],
-                    },
-                },
-            }
-        });
-    
+            },
+        }
+    });
+
     tracing::info!("Target URL: {}", config.proxy.target_url);
     tracing::info!("PII types enabled: {:?}", config.pii.types);
 
@@ -102,8 +97,8 @@ async fn main() {
         .unwrap_or_else(|_| {
             panic!("FPE_KEY environment variable must be set");
         });
-    let fpe_cipher = Arc::new(FPECipher::new(&fpe_key, 10)
-        .expect("Failed to initialize FPE cipher"));
+    let fpe_cipher =
+        Arc::new(FPECipher::new(&fpe_key, 10).expect("Failed to initialize FPE cipher"));
     let vault = PrivacyVault::new();
 
     let vault_cleanup = vault.clone();
@@ -120,7 +115,7 @@ async fn main() {
 
     let reverser = Reverser::new(vault.clone(), fpe_key);
     let proxy_client = Arc::new(ProxyClient::new(config.proxy.target_url.clone()));
-    let state = AppState { 
+    let state = AppState {
         proxy_client,
         config: Arc::new(config.clone()),
         vault,
@@ -153,93 +148,135 @@ async fn proxy_handler(
     mut req: Request<Body>,
 ) -> Result<axum::response::Response, (StatusCode, String)> {
     let (parts, body) = req.into_parts();
-    
-    let body_bytes = axum::body::to_bytes(body, usize::MAX)
-        .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read body: {}", e)))?;
+
+    let body_bytes = axum::body::to_bytes(body, usize::MAX).await.map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("Failed to read body: {}", e),
+        )
+    })?;
 
     let body_str = String::from_utf8_lossy(&body_bytes);
-    
+
     let mut all_matches = Vec::new();
-    
+
     let chinese_id_detections = detect_chinese_id(&body_str);
-    all_matches.extend(chinese_id_detections.into_iter().map(|(start, end, value)| {
-        PIIMatch::new(PIIType::ChineseID, value, start, end, 1.0)
-    }));
-    
+    all_matches.extend(
+        chinese_id_detections
+            .into_iter()
+            .map(|(start, end, value)| PIIMatch::new(PIIType::ChineseID, value, start, end, 1.0)),
+    );
+
     all_matches.extend(detect_phone_number(&body_str));
     all_matches.extend(detect_email(&body_str));
     all_matches.extend(detect_api_keys(&body_str));
-    
+
     if all_matches.is_empty() {
         tracing::debug!("No PII detected, forwarding original request");
         req = Request::from_parts(parts, Body::from(body_bytes.to_vec()));
         return state.proxy_client.forward_request(req).await;
     }
-    
+
     all_matches.sort_by_key(|m| m.start);
-    
+
     let session_id = extract_session_id(&parts);
-    tracing::info!("Detected {} PII item(s) in session {}", all_matches.len(), session_id);
-    
+    tracing::info!(
+        "Detected {} PII item(s) in session {}",
+        all_matches.len(),
+        session_id
+    );
+
     let mut masked_body = body_str.to_string();
     let mut offset: i64 = 0;
-    
+
     for (idx, pii_match) in all_matches.iter().enumerate() {
         let original_value = &pii_match.value;
         let token = match pii_match.pii_type {
             PIIType::ChineseID | PIIType::PhoneNumber => {
-                let encrypted = state.fpe_cipher.encrypt(original_value, session_id.as_bytes())
-                    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("FPE encryption failed: {}", e)))?;
+                let encrypted = state
+                    .fpe_cipher
+                    .encrypt(original_value, session_id.as_bytes())
+                    .map_err(|e| {
+                        (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            format!("FPE encryption failed: {}", e),
+                        )
+                    })?;
                 encrypted
-            },
-            PIIType::APIKey | PIIType::APISecret | PIIType::AWSAccessKey | 
-            PIIType::AWSSecretKey | PIIType::GitHubToken => {
-                hash_value(original_value)
-            },
+            }
+            PIIType::APIKey
+            | PIIType::APISecret
+            | PIIType::AWSAccessKey
+            | PIIType::AWSSecretKey
+            | PIIType::GitHubToken => hash_value(original_value),
             PIIType::Email => {
                 format!("[REDACTED_EMAIL_{:03}]", idx + 1)
-            },
+            }
         };
-        
-        state.vault.store(&session_id, token.clone(), original_value.clone())
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Vault storage failed: {}", e)))?;
-        
+
+        state
+            .vault
+            .store(&session_id, token.clone(), original_value.clone())
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Vault storage failed: {}", e),
+                )
+            })?;
+
         let start = (pii_match.start as i64 + offset) as usize;
         let end = (pii_match.end as i64 + offset) as usize;
-        
+
         masked_body.replace_range(start..end, &token);
         offset += token.len() as i64 - (pii_match.end - pii_match.start) as i64;
-        
-        tracing::debug!("Masked {} at position {}-{} with token: {}", 
-            pii_match.pii_type.as_str(), pii_match.start, pii_match.end, token);
+
+        tracing::debug!(
+            "Masked {} at position {}-{} with token: {}",
+            pii_match.pii_type.as_str(),
+            pii_match.start,
+            pii_match.end,
+            token
+        );
     }
-    
-    tracing::info!("Masked body preview: {}", 
-        masked_body.chars().take(200).collect::<String>());
-    
+
+    tracing::info!(
+        "Masked body preview: {}",
+        masked_body.chars().take(200).collect::<String>()
+    );
+
     req = Request::from_parts(parts, Body::from(masked_body));
-    
+
     tracing::debug!("Proxying request to target");
     let response = state.proxy_client.forward_request(req).await?;
-    
+
     let (parts, body) = response.into_parts();
-    let body_bytes = axum::body::to_bytes(body, usize::MAX)
-        .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Read response body failed: {}", e)))?;
+    let body_bytes = axum::body::to_bytes(body, usize::MAX).await.map_err(|e| {
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("Read response body failed: {}", e),
+        )
+    })?;
     let body_str = String::from_utf8_lossy(&body_bytes);
-    
-    let restored_body = state.reverser.restore_response(&session_id, &body_str)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Response restoration failed: {}", e)))?;
-    
+
+    let restored_body = state
+        .reverser
+        .restore_response(&session_id, &body_str)
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Response restoration failed: {}", e),
+            )
+        })?;
+
     tracing::debug!("Response restored for session {}", session_id);
-    
+
     let response = Response::from_parts(parts, restored_body.into());
     Ok(response)
 }
 
 fn extract_session_id(parts: &axum::http::request::Parts) -> String {
-    parts.headers
+    parts
+        .headers
         .get("x-session-id")
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string())

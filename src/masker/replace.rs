@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
 
-static REDACTION_COUNTER: LazyLock<Mutex<HashMap<String, usize>>> = 
+static REDACTION_COUNTER: LazyLock<Mutex<HashMap<String, usize>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 fn next_redaction_id(key: &str) -> usize {

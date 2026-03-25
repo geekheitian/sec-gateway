@@ -4,11 +4,11 @@
 
 use serde::{Deserialize, Serialize};
 
+pub mod api_key;
 pub mod chinese_id;
-pub mod phone;
 pub mod email;
 pub mod entropy;
-pub mod api_key;
+pub mod phone;
 
 /// PII类型枚举
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -64,7 +64,13 @@ pub struct PIIMatch {
 
 impl PIIMatch {
     /// 创建新的PII匹配结果
-    pub fn new(pii_type: PIIType, value: String, start: usize, end: usize, confidence: f32) -> Self {
+    pub fn new(
+        pii_type: PIIType,
+        value: String,
+        start: usize,
+        end: usize,
+        confidence: f32,
+    ) -> Self {
         Self {
             pii_type,
             value,
@@ -109,14 +115,8 @@ mod tests {
 
     #[test]
     fn test_pii_match_range() {
-        let match_result = PIIMatch::new(
-            PIIType::Email,
-            "test@example.com".to_string(),
-            0,
-            16,
-            0.95,
-        );
+        let match_result =
+            PIIMatch::new(PIIType::Email, "test@example.com".to_string(), 0, 16, 0.95);
         assert_eq!(match_result.range(), 0..16);
     }
 }
-

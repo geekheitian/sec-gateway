@@ -1,6 +1,6 @@
 use axum::{
     body::Body,
-    http::{Request, Response, StatusCode, header::HeaderValue},
+    http::{header::HeaderValue, Request, Response, StatusCode},
 };
 use bytes::Bytes;
 use futures_util::stream;
@@ -27,10 +27,13 @@ impl ProxyClient {
         req: Request<Body>,
     ) -> Result<Response<Body>, (StatusCode, String)> {
         let (parts, body) = req.into_parts();
-        
-        let body_bytes = axum::body::to_bytes(body, usize::MAX)
-            .await
-            .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read body: {}", e)))?;
+
+        let body_bytes = axum::body::to_bytes(body, usize::MAX).await.map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                format!("Failed to read body: {}", e),
+            )
+        })?;
 
         let method_str = parts.method.as_str();
         let method = reqwest::Method::from_bytes(method_str.as_bytes())
@@ -55,15 +58,22 @@ impl ProxyClient {
             .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Forward failed: {}", e)))?;
 
         let status_code = response.status().as_u16();
-        let body_bytes = response
-            .bytes()
-            .await
-            .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Read response failed: {}", e)))?;
+        let body_bytes = response.bytes().await.map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("Read response failed: {}", e),
+            )
+        })?;
 
         let resp = Response::builder()
             .status(status_code)
             .body(Body::from(body_bytes.to_vec()))
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Build response failed: {}", e)))?;
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Build response failed: {}", e),
+                )
+            })?;
 
         Ok(resp)
     }
@@ -73,10 +83,13 @@ impl ProxyClient {
         req: Request<Body>,
     ) -> Result<Response<Body>, (StatusCode, String)> {
         let (parts, body) = req.into_parts();
-        
-        let body_bytes = axum::body::to_bytes(body, usize::MAX)
-            .await
-            .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read body: {}", e)))?;
+
+        let body_bytes = axum::body::to_bytes(body, usize::MAX).await.map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                format!("Failed to read body: {}", e),
+            )
+        })?;
 
         let method_str = parts.method.as_str();
         let method = reqwest::Method::from_bytes(method_str.as_bytes())
@@ -101,41 +114,61 @@ impl ProxyClient {
             .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Forward failed: {}", e)))?;
 
         let status_code = response.status().as_u16();
-        
-        let is_streaming = response.headers()
+
+        let is_streaming = response
+            .headers()
             .get("content-type")
             .and_then(|v| v.to_str().ok())
             .map(|v| v.contains("text/event-stream"))
             .unwrap_or(false);
 
-        let body_bytes = response
-            .bytes()
-            .await
-            .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Read response failed: {}", e)))?;
+        let body_bytes = response.bytes().await.map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("Read response failed: {}", e),
+            )
+        })?;
 
         if is_streaming {
             let mut resp = Response::builder()
                 .status(status_code)
                 .body(Body::from(body_bytes.to_vec()))
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Build streaming response failed: {}", e)))?;
-            
-            resp.headers_mut().insert("content-type", HeaderValue::from_static("text/event-stream"));
-            resp.headers_mut().insert("cache-control", HeaderValue::from_static("no-cache"));
-            resp.headers_mut().insert("connection", HeaderValue::from_static("keep-alive"));
-            
+                .map_err(|e| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!("Build streaming response failed: {}", e),
+                    )
+                })?;
+
+            resp.headers_mut().insert(
+                "content-type",
+                HeaderValue::from_static("text/event-stream"),
+            );
+            resp.headers_mut()
+                .insert("cache-control", HeaderValue::from_static("no-cache"));
+            resp.headers_mut()
+                .insert("connection", HeaderValue::from_static("keep-alive"));
+
             return Ok(resp);
         }
 
         let resp = Response::builder()
             .status(status_code)
             .body(Body::from(body_bytes.to_vec()))
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Build response failed: {}", e)))?;
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Build response failed: {}", e),
+                )
+            })?;
 
         Ok(resp)
     }
 
     pub fn create_streaming_body(chunks: Vec<String>) -> Body {
-        let iter = chunks.into_iter().map(|s| Ok::<_, std::convert::Infallible>(Bytes::from(s)));
+        let iter = chunks
+            .into_iter()
+            .map(|s| Ok::<_, std::convert::Infallible>(Bytes::from(s)));
         Body::from_stream(stream::iter(iter))
     }
 }

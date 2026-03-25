@@ -17,29 +17,43 @@ impl PrivacyVault {
         }
     }
 
-    pub fn store(&self, session_id: &str, token: String, original_value: String) -> Result<(), String> {
-        let mut storage = self.storage.write()
+    pub fn store(
+        &self,
+        session_id: &str,
+        token: String,
+        original_value: String,
+    ) -> Result<(), String> {
+        let mut storage = self
+            .storage
+            .write()
             .map_err(|e| format!("Failed to acquire write lock: {}", e))?;
-        
-        let session = storage.entry(session_id.to_string()).or_insert_with(|| (HashMap::new(), Instant::now()));
+
+        let session = storage
+            .entry(session_id.to_string())
+            .or_insert_with(|| (HashMap::new(), Instant::now()));
         session.0.insert(token, original_value);
-        
+
         Ok(())
     }
 
     pub fn retrieve(&self, session_id: &str, token: &str) -> Result<Option<String>, String> {
-        let storage = self.storage.read()
+        let storage = self
+            .storage
+            .read()
             .map_err(|e| format!("Failed to acquire read lock: {}", e))?;
-        
-        Ok(storage.get(session_id)
+
+        Ok(storage
+            .get(session_id)
             .and_then(|session| session.0.get(token))
             .cloned())
     }
 
     pub fn clear_session(&self, session_id: &str) -> Result<(), String> {
-        let mut storage = self.storage.write()
+        let mut storage = self
+            .storage
+            .write()
             .map_err(|e| format!("Failed to acquire write lock: {}", e))?;
-        
+
         storage.remove(session_id);
         Ok(())
     }
@@ -50,12 +64,13 @@ impl PrivacyVault {
             Ok(s) => s,
             Err(_) => return 0,
         };
-        
-        let stale: Vec<String> = storage.iter()
+
+        let stale: Vec<String> = storage
+            .iter()
             .filter(|(_, (_, created))| *created < cutoff)
             .map(|(sid, _)| sid.clone())
             .collect();
-        
+
         let count = stale.len();
         for sid in stale {
             storage.remove(&sid);
@@ -68,7 +83,8 @@ impl PrivacyVault {
     }
 
     pub fn token_count(&self, session_id: &str) -> usize {
-        self.storage.read()
+        self.storage
+            .read()
             .ok()
             .and_then(|s| s.get(session_id).map(|session| session.0.len()))
             .unwrap_or(0)
@@ -100,7 +116,9 @@ mod tests {
         let token = "[REDACTED_ID_001]";
         let value = "110101199001011234";
 
-        vault.store(session, token.to_string(), value.to_string()).unwrap();
+        vault
+            .store(session, token.to_string(), value.to_string())
+            .unwrap();
         let retrieved = vault.retrieve(session, token).unwrap();
 
         assert_eq!(retrieved, Some(value.to_string()));
@@ -113,11 +131,21 @@ mod tests {
         let session2 = "session_002";
         let token = "[REDACTED_ID_001]";
 
-        vault.store(session1, token.to_string(), "value1".to_string()).unwrap();
-        vault.store(session2, token.to_string(), "value2".to_string()).unwrap();
+        vault
+            .store(session1, token.to_string(), "value1".to_string())
+            .unwrap();
+        vault
+            .store(session2, token.to_string(), "value2".to_string())
+            .unwrap();
 
-        assert_eq!(vault.retrieve(session1, token).unwrap(), Some("value1".to_string()));
-        assert_eq!(vault.retrieve(session2, token).unwrap(), Some("value2".to_string()));
+        assert_eq!(
+            vault.retrieve(session1, token).unwrap(),
+            Some("value1".to_string())
+        );
+        assert_eq!(
+            vault.retrieve(session2, token).unwrap(),
+            Some("value2".to_string())
+        );
     }
 
     #[test]
@@ -134,7 +162,9 @@ mod tests {
         let session = "session_001";
         let token = "[REDACTED_ID_001]";
 
-        vault.store(session, token.to_string(), "value".to_string()).unwrap();
+        vault
+            .store(session, token.to_string(), "value".to_string())
+            .unwrap();
         assert_eq!(vault.session_count(), 1);
 
         vault.clear_session(session).unwrap();
@@ -147,14 +177,29 @@ mod tests {
         let vault = PrivacyVault::new();
         let session = "session_001";
 
-        vault.store(session, "[TOKEN_1]".to_string(), "value1".to_string()).unwrap();
-        vault.store(session, "[TOKEN_2]".to_string(), "value2".to_string()).unwrap();
-        vault.store(session, "[TOKEN_3]".to_string(), "value3".to_string()).unwrap();
+        vault
+            .store(session, "[TOKEN_1]".to_string(), "value1".to_string())
+            .unwrap();
+        vault
+            .store(session, "[TOKEN_2]".to_string(), "value2".to_string())
+            .unwrap();
+        vault
+            .store(session, "[TOKEN_3]".to_string(), "value3".to_string())
+            .unwrap();
 
         assert_eq!(vault.token_count(session), 3);
-        assert_eq!(vault.retrieve(session, "[TOKEN_1]").unwrap(), Some("value1".to_string()));
-        assert_eq!(vault.retrieve(session, "[TOKEN_2]").unwrap(), Some("value2".to_string()));
-        assert_eq!(vault.retrieve(session, "[TOKEN_3]").unwrap(), Some("value3".to_string()));
+        assert_eq!(
+            vault.retrieve(session, "[TOKEN_1]").unwrap(),
+            Some("value1".to_string())
+        );
+        assert_eq!(
+            vault.retrieve(session, "[TOKEN_2]").unwrap(),
+            Some("value2".to_string())
+        );
+        assert_eq!(
+            vault.retrieve(session, "[TOKEN_3]").unwrap(),
+            Some("value3".to_string())
+        );
     }
 
     #[test]
@@ -164,8 +209,10 @@ mod tests {
         let session = "session_001";
         let token = "[TOKEN]";
 
-        vault1.store(session, token.to_string(), "value".to_string()).unwrap();
-        
+        vault1
+            .store(session, token.to_string(), "value".to_string())
+            .unwrap();
+
         let retrieved = vault2.retrieve(session, token).unwrap();
         assert_eq!(retrieved, Some("value".to_string()));
     }
@@ -178,10 +225,14 @@ mod tests {
         let vault_clone = vault.clone();
 
         let handle = thread::spawn(move || {
-            vault_clone.store("session_001", "[TOKEN_1]".to_string(), "value1".to_string()).unwrap();
+            vault_clone
+                .store("session_001", "[TOKEN_1]".to_string(), "value1".to_string())
+                .unwrap();
         });
 
-        vault.store("session_002", "[TOKEN_2]".to_string(), "value2".to_string()).unwrap();
+        vault
+            .store("session_002", "[TOKEN_2]".to_string(), "value2".to_string())
+            .unwrap();
 
         handle.join().unwrap();
 
@@ -193,7 +244,9 @@ mod tests {
         let vault = PrivacyVault::new();
         assert_eq!(vault.token_count("nonexistent"), 0);
 
-        vault.store("session", "[TOKEN]".to_string(), "value".to_string()).unwrap();
+        vault
+            .store("session", "[TOKEN]".to_string(), "value".to_string())
+            .unwrap();
         assert_eq!(vault.token_count("session"), 1);
     }
 }

@@ -1,5 +1,5 @@
+use super::{entropy, PIIMatch, PIIType};
 use regex::Regex;
-use super::{PIIMatch, PIIType, entropy};
 
 const OPENAI_KEY_PATTERN: &str = r"\bsk-[A-Za-z0-9\-]{20,}\b";
 const GITHUB_TOKEN_PATTERN: &str = r"\bghp_[A-Za-z0-9]{36,}\b";
@@ -89,7 +89,13 @@ mod tests {
         let text = "API Key: sk-proj-AbCdEf1234567890XyZ";
         let results = detect_api_keys(text);
         assert!(results.iter().any(|m| m.pii_type == PIIType::APIKey));
-        assert_eq!(results.iter().filter(|m| m.pii_type == PIIType::APIKey).count(), 1);
+        assert_eq!(
+            results
+                .iter()
+                .filter(|m| m.pii_type == PIIType::APIKey)
+                .count(),
+            1
+        );
     }
 
     #[test]
@@ -115,7 +121,8 @@ mod tests {
 
     #[test]
     fn test_detect_multiple_keys() {
-        let text = "OpenAI: sk-proj-AbCdEf1234567890XyZ, GitHub: ghp_1A2b3C4d5E6f7G8h9I0j1K2l3M4n5O6p7Q8r";
+        let text =
+            "OpenAI: sk-proj-AbCdEf1234567890XyZ, GitHub: ghp_1A2b3C4d5E6f7G8h9I0j1K2l3M4n5O6p7Q8r";
         let results = detect_api_keys(text);
         assert_eq!(results.len(), 2);
     }
@@ -131,7 +138,11 @@ mod tests {
     fn test_aws_secret_entropy_filter() {
         let low_entropy = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
         let results = detect_aws_secret_keys(low_entropy);
-        assert_eq!(results.len(), 0, "Low entropy string should not be detected");
+        assert_eq!(
+            results.len(),
+            0,
+            "Low entropy string should not be detected"
+        );
     }
 
     #[test]
