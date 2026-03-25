@@ -99,6 +99,35 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 - 原始值存储在本地Vault，会话隔离
 - 转发脱敏后的请求到LLM，原始数据不离开本地环境
 
+---
+
+## 🤖 命令行 AI 助手
+
+`ai` 会把命令后面的文本作为 prompt 发送到可配置的模型接口，并把回复直接打印出来。脚本位于 `~/ai.sh`，已通过 `~/.zshrc` 暴露到 PATH。
+
+```bash
+ai 你好 世界
+```
+
+也可以从标准输入读取：
+
+```bash
+echo "你好 世界" | ai
+```
+
+可用环境变量：
+
+- `AI_PROVIDER`：`openai`、`anthropic` 或 `auto`
+- `AI_BASE_URL`：OpenAI 兼容接口地址，默认 `https://api.openai.com/v1/chat/completions`
+- `ANTHROPIC_BASE_URL`：Anthropic 兼容接口地址，例如 `https://api.minimaxi.com/anthropic`
+- `AI_API_KEY`：API Key，也会回退读取 `OPENAI_API_KEY`、`ANTHROPIC_AUTH_TOKEN` 或 `MINIMAX_API_KEY`
+- `AI_MODEL`：模型名，默认 `gpt-4o-mini`
+- `ANTHROPIC_MODEL`：Anthropic 模式下的模型名回退
+- `AI_SYSTEM_PROMPT`：可选系统提示词
+- `AI_TEMPERATURE`：采样温度，默认 `0.2`
+- `AI_MAX_TOKENS`：可选最大输出长度；Anthropic 模式下默认 `1024`
+
+如果你已经在 shell 里导出了 `MINIMAX_API_KEY`，或者设置了 `ANTHROPIC_BASE_URL` / `ANTHROPIC_MODEL`，`ai.sh` 会自动优先使用 Anthropic/MiniMax 模式，并自动补齐到 `/v1/messages` 路径。
 
 ---
 
@@ -128,11 +157,18 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 ### 开发路线图
 
 - ✅ **Phase 0.5** (已完成) - 原型验证 + 项目骨架
-- ✅ **Phase 1 MVP** (Week 3-5) - 8种PII类型 + FPE加密 + Vault + 流式响应
-- ⏳ **Phase 2A** (Week 6) - Provider abstraction + multi-provider support
-- ⏳ **Phase 2B** (Week 7) - PII expansion: 8→15 types + config-driven detection
-- ⏳ **Phase 2C** (Week 8) - Observability: logging, metrics, session ops
-- ⏳ **Phase 3** (Week 9-11) - v2.0: Web Dashboard + NER model integration
+- ✅ **Phase 1 MVP** (已完成) - 8种PII类型 + FPE加密 + Vault + 流式响应
+- ✅ **Phase 1.5** (已完成) - 响应恢复接入 + FPE key 环境变量加载 + 会话清理
+- ⏳ **Phase 2A** - Provider abstraction + multi-provider support
+- ⏳ **Phase 2B** - PII expansion: 8→15 types + config-driven detection
+- ⏳ **Phase 2C** - Security & operability: TLS / auth / rate limiting / audit / metrics / session ops
+- ⏳ **Phase 3** - v2.0: Web Dashboard + NER model integration
+
+### 安全优先级说明
+
+- **P0**: TLS/SSL、API 认证
+- **P1**: CORS 白名单、Rate Limiting、FPE 密钥轮换、Vault 加密
+- **P2**: Vault 持久化、PII 校验位增强
 
 ---
 
