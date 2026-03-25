@@ -6,8 +6,10 @@ pub mod reverser;
 
 pub use reverser::Reverser;
 
+type SessionData = (HashMap<String, String>, Instant);
+
 pub struct PrivacyVault {
-    storage: Arc<RwLock<HashMap<String, (HashMap<String, String>, Instant)>>>,
+    storage: Arc<RwLock<HashMap<String, SessionData>>>,
 }
 
 impl PrivacyVault {

@@ -28,7 +28,7 @@ impl Reverser {
                 .collect();
 
             for (start, end, token) in matches.into_iter().rev() {
-                if let Some(original) = self.vault.retrieve(session_id, &token).map_err(|e| e)? {
+                if let Some(original) = self.vault.retrieve(session_id, &token)? {
                     let adj_start = (start as i64 + offset) as usize;
                     let adj_end = (end as i64 + offset) as usize;
                     result.replace_range(adj_start..adj_end, &original);
@@ -78,7 +78,7 @@ impl Reverser {
         let mut restored = HashSet::new();
 
         for token in tokens {
-            if let Some(original) = self.vault.retrieve(session_id, token).map_err(|e| e)? {
+            if let Some(original) = self.vault.retrieve(session_id, token)? {
                 restored.insert(original);
             }
         }

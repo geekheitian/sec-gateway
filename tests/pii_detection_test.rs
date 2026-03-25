@@ -172,7 +172,7 @@ fn test_overlapping_detection_priority() {
     let text = "Key: sk-proj-1234567890abcdefghij and another sk-test-xyz";
     let results = detect_api_keys(text);
 
-    assert!(results.len() >= 1, "Should detect at least one API key");
+    assert!(!results.is_empty(), "Should detect at least one API key");
 }
 
 #[test]

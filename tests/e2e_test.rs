@@ -26,7 +26,7 @@ fn test_e2e_pii_masking_flow_chinese_id() {
     let mut masked_body = body.to_string();
     let mut offset: i64 = 0;
 
-    for (idx, pii) in detections.iter().enumerate() {
+    for pii in detections.iter() {
         let token = cipher.encrypt(&pii.value, session_id.as_bytes()).unwrap();
         vault
             .store(session_id, token.clone(), pii.value.clone())
@@ -180,7 +180,7 @@ fn test_e2e_multiple_pii_types_single_request() {
             | PIIType::AWSAccessKey
             | PIIType::AWSSecretKey
             | PIIType::APISecret => hash_value(&pii.value),
-            PIIType::Email => format!("[REDACTED_EMAIL]"),
+            PIIType::Email => "[REDACTED_EMAIL]".to_string(),
         };
 
         vault
