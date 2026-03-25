@@ -22,14 +22,20 @@
 - 测试口径：`103` 是当前有效口径；个别后台分析把 lib/bin 重复执行误算为 182，应视为噪音，不作为决策依据
 
 ## Open Questions
-- 最后一个后台结果：计划与仓库不一致性扫描，待合并
-- 是否应把“响应恢复接入 + FPE key 管理 + 流式恢复”定义为 Phase 1.5，而不是直接并入 Phase 2
+- 已完成：仓库与计划不一致性扫描结果已合并
+- 已确认：将“响应恢复接入 + FPE key 管理 + 流式恢复”归入 Phase 1.5
 
 ## Technical Assessment
 - 结论：**Phase 2 原规划不完全合理，主要问题是顺序错误，不是目标错误**
 - 阻塞项 1：响应恢复尚未接入主链路，当前“可逆恢复”只在模块级成立，不是产品级成立
 - 阻塞项 2：多 Provider 抽象层不存在，但 Anthropic/Gemini 被排在同一阶段直接接入，耦合过深
 - 范围膨胀项：把 Web Dashboard 与多 Provider、审计、指标放进同一个 3 周阶段，明显过载
+
+## Security Evaluation Summary
+- **P0**：TLS/SSL、API 认证
+- **P1**：CORS 白名单、Rate Limiting、FPE 密钥轮换、Vault 加密
+- **P2**：Vault 持久化、PII 校验位增强
+- 生产优先项不应继续滞留在 Phase 3；它们应进入 Phase 2C 的安全与运维底座
 
 ## Recommended Reordering
 - Phase 1.5（前置修补）
@@ -44,10 +50,12 @@
   - 新增信用卡、JWT、连接串、IP、多国手机号
   - 引入 per-PII 策略配置与自定义 regex
 - Phase 2C（运维可观测性）
+  - TLS / API 认证 / Rate Limiting
+  - CORS 白名单
   - 审计日志
   - Prometheus metrics
   - 会话生命周期管理
-- Phase 3
+  - Phase 3
   - Web Dashboard / Tauri + Preact
 
 ## Revised Phase 2 Sequence
@@ -94,6 +102,10 @@
 - 比 Web UI 更接近生产可用门槛
 
 **Scope**
+- TLS/SSL
+- API 认证
+- Rate Limiting
+- CORS 白名单
 - 审计日志
 - Prometheus `/metrics`
 - 会话生命周期管理（TTL / cleanup / listing）
@@ -103,6 +115,7 @@
 - 可统计请求量、脱敏命中量、错误率、延迟
 - 会话不再无限增长
 - 审计日志具备最小可追踪性
+- 生产访问路径具备基本安全边界（TLS + auth + rate limit + CORS）
 
 ### Move to Phase 3: Web Dashboard
 **Reason**
@@ -110,16 +123,17 @@
 - 当前仓库没有任何前端脚手架或桌面端基础设施，直接放 Phase 2 风险过高
 
 ## Proposed Corrections to Existing Plan File
-- 把 `.sisyphus/plans/privacy-gateway.md` 中的 `Health Check` 从 Phase 2 Week 8 移除或标记已完成
+- 把 `.sisyphus/plans/privacy-gateway.md` 中的 `Health Check` 从 Phase 2 清单中移除或标记已完成
 - 在 Phase 2 前新增一个显式 `Phase 1.5` 段落
-- 将 `Week 7: 多Provider + 配置系统` 上提为 Phase 2 的首阶段
-- 将 `Week 6: PII类型扩展` 下移到 Provider 抽象之后
-- 将 `Week 8: Web Dashboard` 拆出至 Phase 3
+- 将 `Week 6: Provider 抽象优先` 置于 Phase 2A
+- 将 `Week 7: PII类型扩展` 置于 Phase 2B
+- 将 `Week 8: 安全与运维底座` 置于 Phase 2C
+- 将 `Web Dashboard` 明确放入 Phase 3
 
 ## Recommended Final Narrative
 - Phase 1：完成请求侧脱敏 MVP
 - Phase 1.5：补齐响应恢复与密钥管理闭环
-- Phase 2：先做平台化抽象（Provider），再做能力扩展（PII），最后补运行治理（metrics/audit/session）
+- Phase 2：先做平台化抽象（Provider），再做能力扩展（PII），最后补安全与运维底座（TLS/auth/rate limit/CORS/metrics/audit/session）
 - Phase 3：做 UI / 桌面端体验层
 
 ## Scope Boundaries
