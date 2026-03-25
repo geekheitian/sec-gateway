@@ -162,7 +162,13 @@ echo "你好 世界" | ai
 - ⏳ **Phase 2A** - Provider abstraction + multi-provider support
 - ⏳ **Phase 2B** - PII expansion: 8→15 types + config-driven detection
 - ⏳ **Phase 2C** - Security & operability: TLS / auth / rate limiting / audit / metrics / session ops
-- ⏳ **Phase 3** - v2.0: Web Dashboard + NER model integration
+- ⏳ **Phase 3** - v2.0: Dashboard + NER model integration
+
+### 前端/UI 启动时机
+
+- **Phase 2A/2B**: 只做信息架构与 UI 草图
+- **Phase 2C**: 搭前端壳子、路由、空页面
+- **Phase 3**: 完整 Dashboard、审计视图、图表与交互
 
 ### 安全优先级说明
 

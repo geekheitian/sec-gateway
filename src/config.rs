@@ -4,9 +4,24 @@ use std::fs;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub server: ServerConfig,
-    pub proxy: ProxyConfig,
+    pub provider: ProviderConfig,
     pub pii: PiiConfig,
     pub security: SecurityConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ProviderKind {
+    #[serde(rename = "openai")]
+    OpenAI,
+    Anthropic,
+    Gemini,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProviderConfig {
+    pub kind: ProviderKind,
+    pub model: String,
+    pub target_url: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -14,13 +29,6 @@ pub struct ServerConfig {
     pub host: String,
     pub port: u16,
     pub log_level: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProxyConfig {
-    pub target_url: String,
-    pub timeout_seconds: u64,
-    pub max_retries: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -76,7 +84,21 @@ impl Config {
             }
         }
         if let Ok(target) = std::env::var("TARGET_URL") {
-            self.proxy.target_url = target;
+            self.provider.target_url = target;
+        }
+        if let Ok(kind) = std::env::var("PROVIDER_KIND") {
+            self.provider.kind = match kind.to_lowercase().as_str() {
+                "openai" => ProviderKind::OpenAI,
+                "anthropic" => ProviderKind::Anthropic,
+                "gemini" => ProviderKind::Gemini,
+                _ => self.provider.kind.clone(),
+            };
+        }
+        if let Ok(model) = std::env::var("PROVIDER_MODEL") {
+            self.provider.model = model;
+        }
+        if let Ok(target) = std::env::var("PROVIDER_TARGET_URL") {
+            self.provider.target_url = target;
         }
         if let Ok(log_level) = std::env::var("RUST_LOG") {
             self.server.log_level = log_level;
@@ -93,11 +115,14 @@ mod tests {
 
     #[test]
     fn test_load_default_config() {
-        let _lock = ENV_LOCK.lock().unwrap();
+        let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
         std::env::remove_var("SERVER_PORT");
         std::env::remove_var("SERVER_HOST");
         std::env::remove_var("TARGET_URL");
+        std::env::remove_var("PROVIDER_KIND");
+        std::env::remove_var("PROVIDER_MODEL");
+        std::env::remove_var("PROVIDER_TARGET_URL");
         std::env::remove_var("RUST_LOG");
 
         let config = Config::load_default();
@@ -107,24 +132,36 @@ mod tests {
         assert_eq!(config.server.host, "0.0.0.0");
         assert_eq!(config.server.port, 8080);
         assert!(config.pii.types.contains(&"chinese_id".to_string()));
+        assert_eq!(config.provider.kind, ProviderKind::OpenAI);
     }
 
     #[test]
     fn test_env_override() {
-        let _lock = ENV_LOCK.lock().unwrap();
+        let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
         std::env::remove_var("SERVER_PORT");
         std::env::remove_var("TARGET_URL");
+        std::env::remove_var("PROVIDER_KIND");
+        std::env::remove_var("PROVIDER_MODEL");
+        std::env::remove_var("PROVIDER_TARGET_URL");
 
         std::env::set_var("SERVER_PORT", "9090");
         std::env::set_var("TARGET_URL", "http://test.example.com");
+        std::env::set_var("PROVIDER_KIND", "anthropic");
+        std::env::set_var("PROVIDER_MODEL", "claude-3-5-sonnet");
+        std::env::set_var("PROVIDER_TARGET_URL", "http://provider.example.com");
 
         let config = Config::load_default().unwrap();
 
         assert_eq!(config.server.port, 9090);
-        assert_eq!(config.proxy.target_url, "http://test.example.com");
+        assert_eq!(config.provider.kind, ProviderKind::Anthropic);
+        assert_eq!(config.provider.model, "claude-3-5-sonnet");
+        assert_eq!(config.provider.target_url, "http://provider.example.com");
 
         std::env::remove_var("SERVER_PORT");
         std::env::remove_var("TARGET_URL");
+        std::env::remove_var("PROVIDER_KIND");
+        std::env::remove_var("PROVIDER_MODEL");
+        std::env::remove_var("PROVIDER_TARGET_URL");
     }
 }

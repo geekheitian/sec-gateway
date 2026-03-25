@@ -2,7 +2,7 @@ mod config;
 mod crypto;
 mod detector;
 mod masker;
-mod proxy;
+mod provider;
 mod vault;
 
 use axum::{
@@ -13,6 +13,7 @@ use axum::{
     routing::{any, get},
     Json, Router,
 };
+use futures_util::StreamExt;
 use serde_json::{json, Value};
 use std::{net::SocketAddr, sync::Arc};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -24,12 +25,19 @@ use detector::{
     phone::detect_phone_number, PIIMatch, PIIType,
 };
 use masker::hash::hash_value;
-use proxy::ProxyClient;
+use provider::{
+    ProviderFactory,
+    Provider,
+    ProviderMessage,
+    ProviderMetadata,
+    ProviderRequest,
+    ProviderStreamEvent,
+};
 use vault::{PrivacyVault, Reverser};
 
 #[derive(Clone)]
 struct AppState {
-    proxy_client: Arc<ProxyClient>,
+    provider: Arc<dyn Provider>,
     config: Arc<Config>,
     vault: PrivacyVault,
     fpe_cipher: Arc<FPECipher>,
@@ -54,11 +62,11 @@ async fn main() {
                 port: 8080,
                 log_level: "debug".to_string(),
             },
-            proxy: config::ProxyConfig {
+            provider: config::ProviderConfig {
+                kind: config::ProviderKind::OpenAI,
+                model: "gpt-3.5-turbo".to_string(),
                 target_url: std::env::var("TARGET_URL")
                     .unwrap_or_else(|_| "https://api.openai.com/v1/chat/completions".to_string()),
-                timeout_seconds: 30,
-                max_retries: 3,
             },
             pii: config::PiiConfig {
                 types: vec!["chinese_id".to_string()],
@@ -78,7 +86,7 @@ async fn main() {
         }
     });
 
-    tracing::info!("Target URL: {}", config.proxy.target_url);
+    tracing::info!("Target URL: {}", config.provider.target_url);
     tracing::info!("PII types enabled: {:?}", config.pii.types);
 
     let fpe_key = std::env::var("FPE_KEY")
@@ -114,9 +122,9 @@ async fn main() {
     });
 
     let reverser = Reverser::new(vault.clone(), fpe_key);
-    let proxy_client = Arc::new(ProxyClient::new(config.proxy.target_url.clone()));
+    let provider: Arc<dyn Provider> = ProviderFactory::build(config.provider.kind.clone(), config.provider.target_url.clone()).into();
     let state = AppState {
-        proxy_client,
+        provider,
         config: Arc::new(config.clone()),
         vault,
         fpe_cipher,
@@ -145,7 +153,7 @@ async fn health_check() -> Json<Value> {
 
 async fn proxy_handler(
     State(state): State<AppState>,
-    mut req: Request<Body>,
+    req: Request<Body>,
 ) -> Result<axum::response::Response, (StatusCode, String)> {
     let (parts, body) = req.into_parts();
 
@@ -173,8 +181,47 @@ async fn proxy_handler(
 
     if all_matches.is_empty() {
         tracing::debug!("No PII detected, forwarding original request");
-        req = Request::from_parts(parts, Body::from(body_bytes.to_vec()));
-        return state.proxy_client.forward_request(req).await;
+    let provider_request = ProviderRequest {
+        method: parts.method.as_str().to_string(),
+        model: state.config.provider.model.clone(),
+        messages: vec![ProviderMessage {
+            role: "user".to_string(),
+            content: body_str.to_string(),
+        }],
+            headers: parts
+                .headers
+                .iter()
+                .filter_map(|(key, value)| value.to_str().ok().map(|v| (key.as_str().to_string(), v.to_string())))
+                .collect(),
+            metadata: ProviderMetadata {
+                session_id: extract_session_id(&parts).into(),
+            trace_id: parts
+                .headers
+                .get("x-trace-id")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string()),
+            streaming: false,
+        },
+        raw_body: Some(body_bytes.clone().into()),
+    };
+        let response = state.provider.send(provider_request).await.map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("Provider forwarding failed: {}", e),
+            )
+        })?;
+
+        let response = Response::builder()
+            .status(response.status)
+            .body(Body::from(response.body.to_vec()))
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Build response failed: {}", e),
+                )
+            })?;
+
+        return Ok(response);
     }
 
     all_matches.sort_by_key(|m| m.start);
@@ -244,19 +291,95 @@ async fn proxy_handler(
         masked_body.chars().take(200).collect::<String>()
     );
 
-    req = Request::from_parts(parts, Body::from(masked_body));
+    let provider_request = ProviderRequest {
+        method: parts.method.as_str().to_string(),
+        model: state.config.provider.model.clone(),
+        messages: vec![ProviderMessage {
+            role: "user".to_string(),
+            content: masked_body.clone(),
+        }],
+        headers: parts
+            .headers
+            .iter()
+            .filter_map(|(key, value)| value.to_str().ok().map(|v| (key.as_str().to_string(), v.to_string())))
+            .collect(),
+        metadata: ProviderMetadata {
+            session_id: Some(session_id.clone()),
+            trace_id: parts
+                .headers
+                .get("x-trace-id")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string()),
+            streaming: false,
+        },
+        raw_body: Some(masked_body.into()),
+    };
 
-    tracing::debug!("Proxying request to target");
-    let response = state.proxy_client.forward_request(req).await?;
+    let is_streaming = parts
+        .headers
+        .get("accept")
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.contains("text/event-stream"))
+        .unwrap_or(false);
 
-    let (parts, body) = response.into_parts();
-    let body_bytes = axum::body::to_bytes(body, usize::MAX).await.map_err(|e| {
+    if is_streaming {
+        let stream = state.provider.send_stream(provider_request).await.map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("Provider streaming failed: {}", e),
+            )
+        })?;
+
+        let mut body_chunks = Vec::new();
+        let mut events = stream.events;
+        while let Some(event) = events.next().await {
+            match event {
+                Ok(ProviderStreamEvent::Data(text)) => body_chunks.push(format!("data: {}\n\n", text)),
+                Ok(ProviderStreamEvent::JsonDelta(value)) => body_chunks.push(format!("data: {}\n\n", value)),
+                Ok(ProviderStreamEvent::Comment(comment)) => body_chunks.push(format!(":{}\n\n", comment)),
+                Ok(ProviderStreamEvent::Retry(ms)) => body_chunks.push(format!("retry: {}\n\n", ms)),
+                Ok(ProviderStreamEvent::Done) => body_chunks.push("data: [DONE]\n\n".to_string()),
+                Err(e) => {
+                    return Err((
+                        StatusCode::BAD_GATEWAY,
+                        format!("Stream event failed: {}", e),
+                    ));
+                }
+            }
+        }
+
+        let mut response = Response::builder()
+            .status(StatusCode::OK)
+            .body(Body::from_stream(futures_util::stream::iter(
+                body_chunks
+                    .into_iter()
+                    .map(|chunk| Ok::<_, std::convert::Infallible>(bytes::Bytes::from(chunk))),
+            )))
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Build streaming response failed: {}", e),
+                )
+            })?;
+
+        response.headers_mut().insert(
+            "content-type",
+            axum::http::HeaderValue::from_str(&stream.content_type)
+                .unwrap_or(axum::http::HeaderValue::from_static("text/event-stream")),
+        );
+
+        return Ok(response);
+    }
+
+    tracing::debug!("Proxying request through provider");
+    let provider_response = state.provider.send(provider_request).await.map_err(|e| {
         (
             StatusCode::BAD_GATEWAY,
-            format!("Read response body failed: {}", e),
+            format!("Provider forwarding failed: {}", e),
         )
     })?;
-    let body_str = String::from_utf8_lossy(&body_bytes);
+
+    let body_str = String::from_utf8_lossy(&provider_response.body);
 
     let restored_body = state
         .reverser
@@ -270,7 +393,15 @@ async fn proxy_handler(
 
     tracing::debug!("Response restored for session {}", session_id);
 
-    let response = Response::from_parts(parts, restored_body.into());
+    let response = Response::builder()
+        .status(provider_response.status)
+        .body(Body::from(restored_body))
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Build response failed: {}", e),
+            )
+        })?;
     Ok(response)
 }
 

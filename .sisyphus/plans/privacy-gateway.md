@@ -243,17 +243,65 @@
 
 **目标**: 先做平台化抽象，再扩展检测面，最后补齐安全与可观测性
 
+**执行顺序原则**:
+- 先稳定接口，再扩展能力
+- 先生产安全底座，再做观测和运维补齐
+- Phase 2 不做完整 Dashboard，只允许 UI 骨架与原型
+
 #### Week 6: Provider 抽象优先
+
+**目标**: 统一 Provider 边界，避免后续接入互相污染
 
 | 任务 | 描述 | 交付物 | 状态 |
 |------|------|-------|------|
-| 4.1 | 多Provider统一接口 | 抽象接口 | ⬜ |
-| 4.2 | Anthropic API支持 | Messages API | ⬜ |
-| 4.3 | Google Gemini支持 | API适配 | ⬜ |
-| 4.4 | 请求/响应模型统一 | 中间层 DTO | ⬜ |
-| 4.5 | 错误与流式事件统一 | 统一处理层 | ⬜ |
+| 4.1 | 定义 Provider trait | 统一请求/响应/流式接口 | ⬜ |
+| 4.2 | 提取 Provider DTO | 请求、响应、错误模型 | ⬜ |
+| 4.3 | 抽象认证层 | Bearer / provider header 适配 | ⬜ |
+| 4.4 | 接入 Anthropic adapter | Messages API 兼容实现 | ⬜ |
+| 4.5 | 接入 Gemini adapter | 基础非流式实现 | ⬜ |
+| 4.6 | 统一错误映射 | provider error -> gateway error | ⬜ |
+| 4.7 | 统一流式事件模型 | SSE 事件转换层 | ⬜ |
+
+**实现顺序**:
+- 先抽 trait 和 DTO
+- 再抽认证与错误映射
+- 最后接入 Anthropic / Gemini adapter
+
+**更细实现清单**:
+1. 定义 Provider trait 的最小接口（非流式请求/响应）
+2. 补齐流式接口与流式事件类型
+3. 提取 ProviderRequest / ProviderResponse / ProviderError DTO
+4. 定义统一认证抽象（token/header provider config）
+5. 定义统一错误映射表（上游错误 -> 网关错误）
+6. 接入 Anthropic adapter 并通过现有 OpenAI 路径回归
+7. 接入 Gemini adapter 的非流式基础实现
+8. 为每个 adapter 补单测与集成测试入口
+
+**Week 6 验收标准**:
+- [ ] OpenAI 现有路径不回归
+- [ ] 至少 1 个新 Provider 接入成功
+- [ ] 请求/响应/错误模型可被 UI 或审计层消费
+- [ ] 流式与非流式都走统一抽象
+- [ ] 认证差异只存在于 adapter 层
+- [ ] 新 Provider 的接入不修改核心业务路由
+- [ ] Provider 相关测试覆盖最小回归路径
+
+**风险边界**:
+- 不重写整个 proxy 层
+- 不在 Week 6 引入完整 UI
+- 不把 Provider 认证逻辑散落到 handler
+
+**Week 6 测试清单**:
+- [ ] Provider trait 单测
+- [ ] DTO 序列化/反序列化测试
+- [ ] Anthropic adapter 回归测试
+- [ ] Gemini adapter 基础请求测试
+- [ ] 错误映射测试
+- [ ] 流式事件转换测试
 
 #### Week 7: PII类型扩展
+
+**目标**: 复用现有 detector/masker 模式，扩展检测覆盖面
 
 | 任务 | 描述 | 交付物 | 状态 |
 |------|------|-------|------|
@@ -265,7 +313,14 @@
 | 5.6 | 自定义Regex模式 | 用户定义检测 | ⬜ |
 | 5.7 | per-PII策略配置 | 类型级脱敏策略 | ⬜ |
 
+**Week 7 验收标准**:
+- [ ] 新增类型都有单测
+- [ ] 每类 PII 都有明确脱敏策略
+- [ ] 配置能按类型覆盖默认行为
+
 #### Week 8: 安全与运维底座
+
+**目标**: 把生产访问路径补齐到可上线门槛
 
 | 任务 | 描述 | 交付物 | 状态 |
 |------|------|-------|------|
@@ -277,6 +332,12 @@
 | 6.6 | 会话管理 | 会话隔离、超时 | ⬜ |
 | 6.7 | Prometheus指标 | metrics端点 | ⬜ |
 
+**Week 8 验收标准**:
+- [ ] 生产访问路径有 TLS + auth + rate limit + CORS
+- [ ] 审计日志可追踪请求与会话
+- [ ] metrics 可用于基础运维监控
+- [ ] UI 骨架可开始接入只读数据
+
 **Phase 2 验收标准**:
 - [ ] 支持至少3种LLM Provider
 - [ ] 检测PII类型≥15种
@@ -284,12 +345,18 @@
 - [ ] TLS/认证/限流均已启用
 - [ ] 审计日志与 metrics 可用
 - [ ] 会话管理具备 TTL 与清理
+- [ ] UI 仅有骨架，不含完整 Dashboard
 
 ---
 
 ### Phase 3: v2.0开发 (3周)
 
 **目标**: NER集成，cc-switch集成，补齐更强的数据治理能力
+
+**前端/UI 启动条件**:
+- Phase 2A/2B 完成后，只做信息架构和原型，不做完整页面实现
+- Phase 2C 期间可以开始 Tauri + Preact 的壳子、路由和空状态
+- 完整 Dashboard、审计视图、图表和交互细节放到 Phase 3
 
 #### Week 9-10: NER集成
 

@@ -3,10 +3,10 @@ server:
   port: 8080
   log_level: "debug"
 
-proxy:
+provider:
+  kind: "openai"
+  model: "gpt-3.5-turbo"
   target_url: "https://api.openai.com/v1/chat/completions"
-  timeout_seconds: 30
-  max_retries: 3
 
 pii:
   types:
