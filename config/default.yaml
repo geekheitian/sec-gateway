@@ -8,6 +8,11 @@ provider:
   model: "gpt-3.5-turbo"
   target_url: "https://api.openai.com/v1/chat/completions"
 
+crypto:
+  fpe:
+    backend: "aes"
+    radix: 10
+
 pii:
   types:
     - chinese_id

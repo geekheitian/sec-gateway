@@ -1,4 +1,4 @@
-use libc::{c_char, c_int, c_uint, size_t, uint8_t};
+use libc::{c_char, c_int, c_uint, size_t};
 
 #[repr(C)]
 pub struct Sm4Context {
@@ -14,11 +14,7 @@ pub struct FpeContext {
 extern "C" {
     pub fn WBCRYPTO_sm4_context_init() -> *mut Sm4Context;
 
-    pub fn WBCRYPTO_sm4_init_key(
-        ctx: *mut Sm4Context,
-        key: *const uint8_t,
-        keylen: size_t,
-    ) -> c_int;
+    pub fn WBCRYPTO_sm4_init_key(ctx: *mut Sm4Context, key: *const u8, keylen: size_t) -> c_int;
 
     pub fn WBCRYPTO_sm4_context_free(ctx: *mut Sm4Context);
 

@@ -5,6 +5,7 @@ use std::fs;
 pub struct Config {
     pub server: ServerConfig,
     pub provider: ProviderConfig,
+    pub crypto: CryptoConfig,
     pub pii: PiiConfig,
     pub security: SecurityConfig,
 }
@@ -39,6 +40,27 @@ pub struct ServerConfig {
     pub host: String,
     pub port: u16,
     pub log_level: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CryptoConfig {
+    pub fpe: FpeConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FpeConfig {
+    #[serde(default = "default_fpe_backend")]
+    pub backend: String,
+    #[serde(default = "default_fpe_radix")]
+    pub radix: u32,
+}
+
+fn default_fpe_backend() -> String {
+    "aes".to_string()
+}
+
+fn default_fpe_radix() -> u32 {
+    10
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -190,6 +212,9 @@ impl Config {
         if let Ok(token) = std::env::var("API_AUTH_TOKEN") {
             self.security.auth.bearer_token = Some(token);
             self.security.auth.enabled = true;
+        }
+        if let Ok(backend) = std::env::var("FPE_BACKEND") {
+            self.crypto.fpe.backend = backend;
         }
     }
 }
