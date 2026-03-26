@@ -643,7 +643,7 @@ main() {
     echo "============================================================"
     
     # 解析参数
-    case "${1:-all}" in
+    case "${1:-full}" in
         "setup")
             preflight_check
             cleanup_test_sessions
