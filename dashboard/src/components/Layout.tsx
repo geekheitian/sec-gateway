@@ -12,7 +12,7 @@ export function Layout({ children }: LayoutProps) {
     <div class="layout">
       <aside class="sidebar">
         <div class="sidebar-header">
-          <h1>sec-gateway</h1>
+          <h1>Sec-Gateway</h1>
           <span class="badge">Dashboard</span>
         </div>
         <nav class="sidebar-nav">
