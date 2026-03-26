@@ -75,6 +75,21 @@ curl http://localhost:8080/health
 {"status":"ok","service":"sec-gateway","version":"0.1.0"}
 ```
 
+### Dashboard UI (可选)
+
+启动本地 Dashboard 可视化界面：
+
+```bash
+cd dashboard
+npm install
+npm run dev
+```
+
+然后访问 http://localhost:5173 查看：
+- **Overview** - 服务状态、会话统计
+- **Sessions** - 会话列表、删除会话
+- **Metrics** - Prometheus 指标可视化
+
 ---
 
 ## ⚙️ 配置示例
@@ -289,7 +304,7 @@ echo "你好 世界" | ai
 - ✅ **Phase 2B** (已完成) - PII扩展至8种完整类型 + 配置驱动检测
 - ✅ **Phase 2C** (已完成) - 安全加固: 认证/速率限制/CORS/审计日志/会话元数据/密钥轮换/指标暴露
 - ✅ **Phase 2D** (已完成) - SM4-FF1 国密算法集成 + 双后端运行时切换 + 性能基准测试
-- ⏳ **Phase 3** - v2.0: Dashboard + NER model integration
+- ⏳ **Phase 3** (进行中) - NER 模型集成 + Dashboard UI
 
 ### 前端/UI 启动时机
 

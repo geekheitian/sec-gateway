@@ -16,6 +16,7 @@ pub mod email;
 pub mod entropy;
 pub mod ip_address;
 pub mod jwt;
+pub mod ner;
 pub mod phone;
 
 pub use registry::active_detectors;
@@ -37,6 +38,9 @@ pub enum PIIType {
     AWSAccessKey,
     AWSSecretKey,
     GitHubToken,
+    NERPerson,
+    NERLocation,
+    NEROrganization,
 }
 
 impl PIIType {
@@ -54,11 +58,13 @@ impl PIIType {
             "aws_access_key" => Some(PIIType::AWSAccessKey),
             "aws_secret_key" => Some(PIIType::AWSSecretKey),
             "github_token" => Some(PIIType::GitHubToken),
+            "ner_person" => Some(PIIType::NERPerson),
+            "ner_location" => Some(PIIType::NERLocation),
+            "ner_organization" => Some(PIIType::NEROrganization),
             _ => None,
         }
     }
 
-    /// 获取PII类型的字符串表示
     pub fn as_str(&self) -> &str {
         match self {
             PIIType::ChineseID => "chinese_id",
@@ -73,6 +79,9 @@ impl PIIType {
             PIIType::AWSAccessKey => "aws_access_key",
             PIIType::AWSSecretKey => "aws_secret_key",
             PIIType::GitHubToken => "github_token",
+            PIIType::NERPerson => "ner_person",
+            PIIType::NERLocation => "ner_location",
+            PIIType::NEROrganization => "ner_organization",
         }
     }
 }

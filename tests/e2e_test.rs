@@ -179,7 +179,10 @@ fn test_e2e_multiple_pii_types_single_request() {
             | PIIType::CreditCard
             | PIIType::IPAddress
             | PIIType::DatabaseConnectionString
-            | PIIType::JWT => hash_value(&pii.value),
+            | PIIType::JWT
+            | PIIType::NERPerson
+            | PIIType::NERLocation
+            | PIIType::NEROrganization => hash_value(&pii.value),
             PIIType::Email => "[REDACTED_EMAIL]".to_string(),
         };
 
