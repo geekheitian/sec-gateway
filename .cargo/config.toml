@@ -1,0 +1,10 @@
+[build]
+rustflags = [
+    "-L", "/tmp/wbcrypto-mode/build/out",
+    "-l", "static=wbcrypto",
+    "-l", "framework=Security",
+    "-l", "framework=CoreFoundation",
+    "-C", "link-arg=-Wl,-rpath,/opt/homebrew/opt/openssl@3/lib",
+    "-L", "/opt/homebrew/opt/openssl@3/lib",
+    "-l", "crypto",
+]

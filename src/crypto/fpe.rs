@@ -163,3 +163,17 @@ mod tests {
         assert_eq!(long_input, decrypted);
     }
 }
+
+impl super::fpe_trait::FpeBackend for FPECipher {
+    fn encrypt(&self, plaintext: &str, tweak: &[u8]) -> Result<String, String> {
+        self.encrypt(plaintext, tweak)
+    }
+
+    fn decrypt(&self, ciphertext: &str, tweak: &[u8]) -> Result<String, String> {
+        self.decrypt(ciphertext, tweak)
+    }
+
+    fn backend_name(&self) -> &'static str {
+        "AES-FF1"
+    }
+}
