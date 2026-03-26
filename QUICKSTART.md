@@ -1,6 +1,6 @@
-# 🚀 快速开始指南 - Phase 1 MVP 部署与验证
+# 🚀 快速开始指南 - Phase 2C 生产就绪部署与验证
 
-本指南帮助你在 5 分钟内部署并验证 sec-gateway Phase 1 MVP。
+本指南帮助你在 5 分钟内部署并验证 sec-gateway Phase 2C 生产就绪版本。
 
 ---
 
@@ -313,7 +313,7 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 
 ## 🔧 配置自定义 LLM 后端
 
-Phase 1 MVP 默认转发到 `https://api.openai.com/v1/chat/completions`。
+Phase 2C 支持多Provider配置（OpenAI / Anthropic / Gemini）。
 
 ### 方法 1: 环境变量（推荐）
 ```bash
@@ -326,6 +326,18 @@ cargo run --release
 ```yaml
 proxy:
   target_url: "http://your-llm-backend:8000/v1/chat/completions"
+
+security:
+  audit:
+    enabled: true
+    file_path: "logs/audit.log"
+    max_file_size_mb: 100
+    rotation_strategy: "daily"
+  
+  key_rotation:
+    enabled: false
+    interval_days: 90
+    auto_rotate: false
 ```
 
 ### 方法 3: Docker 环境变量
@@ -333,7 +345,118 @@ proxy:
 docker run -d \
   -p 8080:8080 \
   -e TARGET_URL="http://your-llm-backend:8000/v1/chat/completions" \
-  sec-gateway:1.0
+  -v $(pwd)/logs:/app/logs \
+  sec-gateway:2.0
+```
+
+---
+
+## 🔐 Phase 2C 新增功能验证
+
+### 测试 1: 审计日志验证
+
+**启用审计日志** (编辑 `config/default.yaml`):
+```yaml
+security:
+  audit:
+    enabled: true
+    file_path: "logs/audit.log"
+```
+
+**发送请求**:
+```bash
+curl -X POST http://localhost:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "x-session-id: audit-test" \
+  -d '{
+    "model": "gpt-3.5-turbo",
+    "messages": [{"role": "user", "content": "Hello"}]
+  }'
+```
+
+**检查审计日志**:
+```bash
+cat logs/audit.log
+```
+
+**预期输出** (JSON格式):
+```json
+{
+  "timestamp": "2024-01-20T10:30:45Z",
+  "level": "INFO",
+  "session_id": "audit-test",
+  "client_ip": "127.0.0.1",
+  "method": "POST",
+  "path": "/v1/chat/completions",
+  "status_code": 200,
+  "duration_ms": 120,
+  "provider": "openai",
+  "pii_detected": 0
+}
+```
+
+---
+
+### 测试 2: 会话元数据追踪
+
+**发送多个请求**:
+```bash
+for i in {1..5}; do
+  curl -X POST http://localhost:8080/v1/chat/completions \
+    -H "x-session-id: metadata-test" \
+    -H "Content-Type: application/json" \
+    -d '{"messages":[{"role":"user","content":"Test '$i'"}]}'
+  sleep 1
+done
+```
+
+**查询会话元数据**:
+```bash
+curl http://localhost:8080/sessions | jq .
+```
+
+**预期响应**:
+```json
+[
+  {
+    "id": "metadata-test",
+    "created_at": "2024-01-20T10:00:00Z",
+    "last_accessed": "2024-01-20T10:00:05Z",
+    "request_count": 5
+  }
+]
+```
+
+---
+
+### 测试 3: 密钥轮换功能
+
+**启用密钥轮换** (编辑 `config/default.yaml`):
+```yaml
+security:
+  key_rotation:
+    enabled: true
+    interval_days: 1  # 测试用，实际建议90天
+    auto_rotate: true
+```
+
+**存储一些会话数据**:
+```bash
+curl -X POST http://localhost:8080/v1/chat/completions \
+  -H "x-session-id: rotation-test" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [{
+      "role": "user",
+      "content": "Phone: 13812345678"
+    }]
+  }'
+```
+
+**等待24小时或手动触发** (在日志中观察):
+```
+INFO: Key rotation check: should rotate = true
+INFO: Key rotation completed, re-encrypted 1 tokens
 ```
 
 ---
@@ -348,16 +471,22 @@ cargo test
 
 **预期输出**:
 ```
-running 79 tests
-test result: ok. 79 passed; 0 failed; 0 ignored; 0 measured
+running 108 tests (lib)
+test result: ok. 108 passed; 0 failed
 
-running 16 tests (integration)
-test result: ok. 16 passed; 0 failed
+running 113 tests (main)
+test result: ok. 113 passed; 0 failed
 
 running 8 tests (e2e)
 test result: ok. 8 passed; 0 failed
 
-总计: 103 tests passing
+running 20 tests (pii)
+test result: ok. 20 passed; 0 failed
+
+running 7 tests (audit)
+test result: ok. 7 passed; 0 failed
+
+总计: 249 tests passing
 ```
 
 ---
@@ -462,11 +591,13 @@ Phase 1 MVP 性能指标（MacBook Pro M1, 16GB RAM）:
 
 ## 📚 下一步
 
-完成 Phase 1 MVP 验证后，可以：
+完成 Phase 2C 验证后，可以：
 
 1. **阅读设计文档**: `.sisyphus/drafts/privacy-gateway-design.md`
 2. **查看工作计划**: `.sisyphus/plans/privacy-gateway.md`
-3. **等待 Phase 2**: CLI工具、性能优化、15种PII类型
+3. **配置生产环境**: 启用 TLS、认证、速率限制
+4. **监控审计日志**: 使用日志分析工具处理 `logs/audit.log`
+5. **等待 Phase 3**: Dashboard UI + NER 模型集成
 
 ---
 
