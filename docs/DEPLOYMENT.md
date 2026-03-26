@@ -70,24 +70,37 @@ ls -lh /tmp/wbcrypto-mode/build/out/libwbcrypto.a
 
 ## 环境变量配置
 
-### AES-256-FF1 后端（默认）
+### 自动生成（推荐）
 
-```bash
-export FPE_KEY="4142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f60"
+首次启动时，密钥会自动生成并打印到日志：
+
+```
+WARN sec_gateway: FPE_KEY not set, auto-generated new key: a1b2c3d4e5f6...
+WARN sec_gateway: IMPORTANT: Save this key! It cannot be recovered if lost.
 ```
 
-- **格式**: 64 个十六进制字符（32 字节）
-- **生成方式**: `openssl rand -hex 32`
+**请务必保存日志中的密钥**，如果丢失将无法解密已加密的数据。
 
-### SM4-128-FF1 后端
+### 手动指定密钥（可选）
+
+如果需要手动指定密钥，使用环境变量：
 
 ```bash
+# AES-256-FF1 后端（默认）
+export FPE_KEY=$(openssl rand -hex 32)
+
+# SM4-128-FF1 后端
 export FPE_BACKEND=sm4
-export SM4_FPE_KEY="0123456789abcdef0123456789abcdef"
+export SM4_FPE_KEY=$(openssl rand -hex 16)
 ```
 
-- **格式**: 32 个十六进制字符（16 字节）
-- **生成方式**: `openssl rand -hex 16`
+### 环境变量说明
+
+| 变量 | 说明 | 生成方式 |
+|------|------|---------|
+| `FPE_KEY` | AES-256 密钥（64 hex chars） | `openssl rand -hex 32` |
+| `SM4_FPE_KEY` | SM4-128 密钥（32 hex chars） | `openssl rand -hex 16` |
+| `FPE_BACKEND` | 加密后端 | `aes` 或 `sm4` |
 
 ### 运行时切换
 
@@ -192,9 +205,16 @@ CMD ["sec-gateway"]
 
 ```bash
 docker build -t sec-gateway:sm4 .
+
+# 自动生成密钥（推荐）
 docker run -p 8080:8080 \
   -e FPE_BACKEND=sm4 \
-  -e SM4_FPE_KEY="0123456789abcdef0123456789abcdef" \
+  sec-gateway:sm4
+
+# 手动指定密钥
+docker run -p 8080:8080 \
+  -e FPE_BACKEND=sm4 \
+  -e SM4_FPE_KEY="$(openssl rand -hex 16)" \
   sec-gateway:sm4
 ```
 
@@ -227,12 +247,17 @@ cargo bench --bench fpe_benchmark
 2. 检查 `.cargo/config.toml` 中的路径是否正确
 3. 重新编译 wbcrypto-mode
 
-### 运行时错误: `SM4_FPE_KEY environment variable not set`
+### 密钥丢失
+
+如果启动时未保存自动生成的密钥，将无法解密已有数据。
 
 **解决方案**:
-```bash
-export SM4_FPE_KEY=$(openssl rand -hex 16)
-```
+1. 停止服务
+2. 删除 Vault 数据（内存中的会话数据）
+3. 重启服务（会自动生成新密钥）
+4. 重新测试
+
+注意：这会导致之前加密的数据无法恢复。
 
 ### 测试失败: `Plaintext length must be at least 6`
 

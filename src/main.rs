@@ -456,79 +456,53 @@ async fn main() {
     tracing::info!("PII types enabled: {:?}", config.pii.types);
     tracing::info!("FPE backend: {}", config.crypto.fpe.backend);
 
-    let fpe_cipher: DynFpeBackend = match config.crypto.fpe.backend.as_str() {
+    fn get_or_generate_key<const N: usize>(env_var: &str, key_type: &str) -> [u8; N] {
+        match std::env::var(env_var) {
+            Ok(key_str) => {
+                let key_bytes = key_str.as_bytes();
+                if key_bytes.len() != N * 2 {
+                    panic!("{} must be {} hex characters ({} bytes)", env_var, N * 2, N);
+                }
+                let mut key = [0u8; N];
+                for (i, chunk) in key_bytes.chunks(2).enumerate() {
+                    key[i] = u8::from_str_radix(std::str::from_utf8(chunk).unwrap(), 16)
+                        .expect("Key must be hex encoded");
+                }
+                key
+            }
+            Err(_) => {
+                let key: [u8; N] = [0; N].map(|_| rand::random::<u8>());
+                let hex_key = key.iter()
+                    .map(|b| format!("{:02x}", b))
+                    .collect::<String>();
+                tracing::warn!("{} not set, auto-generated new key: {}", env_var, hex_key);
+                tracing::warn!("IMPORTANT: Save this key! It cannot be recovered if lost.");
+                key
+            }
+        }
+    }
+
+    let (fpe_cipher, vault_key): (DynFpeBackend, [u8; 32]) = match config.crypto.fpe.backend.as_str() {
         "sm4" => {
-            let sm4_key = std::env::var("SM4_FPE_KEY")
-                .map(|key_str| {
-                    let key_bytes: &[u8] = key_str.as_bytes();
-                    let mut key = [0u8; 16];
-                    if key_bytes.len() != 32 {
-                        panic!("SM4_FPE_KEY must be 32 hex characters (16 bytes)");
-                    }
-                    for (i, chunk) in key_bytes.chunks(2).enumerate() {
-                        key[i] = u8::from_str_radix(std::str::from_utf8(chunk).unwrap(), 16)
-                            .expect("SM4_FPE_KEY must be hex encoded");
-                    }
-                    key
-                })
-                .unwrap_or_else(|_| {
-                    panic!("SM4_FPE_KEY environment variable must be set when using SM4 backend");
-                });
-            
+            let sm4_key = get_or_generate_key::<16>("SM4_FPE_KEY", "SM4");
             use crypto::fpe_trait::create_sm4_backend;
-            create_sm4_backend(&sm4_key, config.crypto.fpe.radix)
-                .expect("Failed to initialize SM4-FF1 backend")
+            let cipher = create_sm4_backend(&sm4_key, config.crypto.fpe.radix)
+                .expect("Failed to initialize SM4-FF1 backend");
+            let mut vault_key = [0u8; 32];
+            vault_key[..16].copy_from_slice(&sm4_key);
+            vault_key[16..].copy_from_slice(&sm4_key);
+            (cipher, vault_key)
         }
         "aes" | _ => {
-            let aes_key = std::env::var("FPE_KEY")
-                .map(|key_str| {
-                    let key_bytes: &[u8] = key_str.as_bytes();
-                    let mut key = [0u8; 32];
-                    if key_bytes.len() != 64 {
-                        panic!("FPE_KEY must be 64 hex characters (32 bytes)");
-                    }
-                    for (i, chunk) in key_bytes.chunks(2).enumerate() {
-                        key[i] = u8::from_str_radix(std::str::from_utf8(chunk).unwrap(), 16)
-                            .expect("FPE_KEY must be hex encoded");
-                    }
-                    key
-                })
-                .unwrap_or_else(|_| {
-                    panic!("FPE_KEY environment variable must be set");
-                });
-            
+            let aes_key = get_or_generate_key::<32>("FPE_KEY", "AES");
             use crypto::fpe_trait::create_aes_backend;
-            create_aes_backend(&aes_key, config.crypto.fpe.radix)
-                .expect("Failed to initialize AES-FF1 backend")
+            let cipher = create_aes_backend(&aes_key, config.crypto.fpe.radix)
+                .expect("Failed to initialize AES-FF1 backend");
+            (cipher, aes_key)
         }
     };
 
     tracing::info!("FPE backend initialized: {}", fpe_cipher.backend_name());
-
-    let vault_key = match config.crypto.fpe.backend.as_str() {
-        "sm4" => {
-            let sm4_key = std::env::var("SM4_FPE_KEY")
-                .expect("SM4_FPE_KEY must be set for vault operations");
-            let key_bytes: &[u8] = sm4_key.as_bytes();
-            let mut key = [0u8; 32];
-            for (i, chunk) in key_bytes.chunks(2).enumerate().take(16) {
-                key[i] = u8::from_str_radix(std::str::from_utf8(chunk).unwrap(), 16)
-                    .expect("SM4_FPE_KEY must be hex encoded");
-            }
-            key
-        }
-        _ => {
-            let aes_key_str = std::env::var("FPE_KEY")
-                .expect("FPE_KEY must be set for vault operations");
-            let key_bytes: &[u8] = aes_key_str.as_bytes();
-            let mut key = [0u8; 32];
-            for (i, chunk) in key_bytes.chunks(2).enumerate() {
-                key[i] = u8::from_str_radix(std::str::from_utf8(chunk).unwrap(), 16)
-                    .expect("FPE_KEY must be hex encoded");
-            }
-            key
-        }
-    };
 
     let vault = PrivacyVault::new();
 
