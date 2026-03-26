@@ -37,3 +37,8 @@ libc = "0.2"
 
 [dev-dependencies]
 http-body-util = "0.1"
+criterion = "0.5"
+
+[[bench]]
+name = "fpe_benchmark"
+harness = false

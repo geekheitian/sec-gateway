@@ -3,7 +3,7 @@
 [![GitHub](https://img.shields.io/badge/github-geekheitian/sec--gateway-blue?logo=github)](https://github.com/geekheitian/sec-gateway)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/rust-1.94%2B-orange.svg)](https://www.rust-lang.org/)
-[![Tests](https://img.shields.io/badge/tests-249%2F249%20passing-brightgreen.svg)](https://github.com/geekheitian/sec-gateway)
+[![Tests](https://img.shields.io/badge/tests-287%2F287%20passing-brightgreen.svg)](https://github.com/geekheitian/sec-gateway)
 
 隐私保护AI网关 - 在本地脱敏敏感数据，安全对接大模型
 
@@ -19,6 +19,7 @@ sec-gateway 是一个开源的隐私保护AI网关，部署在用户本地环境
 
 ✅ **多Provider支持** - OpenAI / Anthropic / Gemini 统一适配  
 ✅ **8种PII检测** - 中国身份证、手机号（含国际）、邮箱、信用卡、JWT、API密钥、IP地址、数据库连接串  
+✅ **双FPE后端** - AES-256-FF1（NIST标准）/ SM4-128-FF1（国密GB/T 32907），运行时可切换  
 ✅ **3种脱敏策略** - FPE格式保留加密、SHA-256哈希、占位符替换  
 ✅ **加密存储** - Vault采用XOR流密码，密钥SHA256派生，零明文存储  
 ✅ **安全响应恢复** - 白名单机制，仅恢复当前请求生成的Token  
@@ -77,6 +78,34 @@ curl http://localhost:8080/health
 ---
 
 ## ⚙️ 配置示例
+
+### FPE 后端选择
+
+编辑 `config/default.yaml` 选择加密后端：
+
+```yaml
+crypto:
+  fpe:
+    backend: "aes"  # 或 "sm4"
+    radix: 10
+```
+
+**后端对比**:
+
+| 特性 | AES-256-FF1 | SM4-128-FF1 |
+|------|-------------|-------------|
+| 标准 | NIST SP 800-38G | GB/T 32907-2016 |
+| 密钥长度 | 32 bytes | 16 bytes |
+| 环境变量 | `FPE_KEY` (64 hex) | `SM4_FPE_KEY` (32 hex) |
+| 最小明文长度 | 无限制 | 6 字符 |
+| 性能 | ~15.7 µs/op | ~17.2 µs/op |
+
+**环境变量覆盖**:
+```bash
+export FPE_BACKEND=sm4
+export SM4_FPE_KEY="0123456789abcdef0123456789abcdef"
+cargo run
+```
 
 ### 审计日志配置
 
@@ -162,6 +191,7 @@ security:
 ## 📚 完整文档
 
 - **[快速开始指南](QUICKSTART.md)** - 详细部署步骤
+- **[部署指南](docs/DEPLOYMENT.md)** - wbcrypto-mode 编译与环境变量配置
 - **[验证清单](VERIFY.md)** - 人工验证检查项
 - **[技术设计](.sisyphus/drafts/privacy-gateway-design.md)** - 完整架构设计
 - **[工作计划](.sisyphus/plans/privacy-gateway.md)** - Phase 0-3 路线图
@@ -245,10 +275,10 @@ echo "你好 世界" | ai
 
 ## 📊 项目状态
 
-**当前版本**: Phase 2C (生产就绪)  
-**测试覆盖**: 249/249 通过 (100%)  
-**代码行数**: ~2800 lines Rust  
-**Git提交**: 29 commits  
+**当前版本**: Phase 2C + SM4-FF1 (生产就绪)  
+**测试覆盖**: 287/287 通过 (100%)  
+**代码行数**: ~3200 lines Rust  
+**Git提交**: 31 commits  
 
 ### 开发路线图
 
@@ -258,6 +288,7 @@ echo "你好 世界" | ai
 - ✅ **Phase 2A** (已完成) - Provider abstraction + OpenAI/Anthropic/Gemini 多Provider支持
 - ✅ **Phase 2B** (已完成) - PII扩展至8种完整类型 + 配置驱动检测
 - ✅ **Phase 2C** (已完成) - 安全加固: 认证/速率限制/CORS/审计日志/会话元数据/密钥轮换/指标暴露
+- ✅ **Phase 2D** (已完成) - SM4-FF1 国密算法集成 + 双后端运行时切换 + 性能基准测试
 - ⏳ **Phase 3** - v2.0: Dashboard + NER model integration
 
 ### 前端/UI 启动时机
