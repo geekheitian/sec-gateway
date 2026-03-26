@@ -1,10 +1,13 @@
 import type { ComponentChildren } from 'preact';
+import { useNavigation } from '../Navigation';
 
 interface LayoutProps {
   children: ComponentChildren;
 }
 
 export function Layout({ children }: LayoutProps) {
+  const { currentPage, navigate } = useNavigation();
+
   return (
     <div class="layout">
       <aside class="sidebar">
@@ -13,12 +16,27 @@ export function Layout({ children }: LayoutProps) {
           <span class="badge">Dashboard</span>
         </div>
         <nav class="sidebar-nav">
-          <a href="/">Overview</a>
-          <a href="/sessions">Sessions</a>
-          <a href="/metrics">Metrics</a>
+          <button
+            class={`nav-link ${currentPage === 'overview' ? 'active' : ''}`}
+            onClick={() => navigate('overview')}
+          >
+            Overview
+          </button>
+          <button
+            class={`nav-link ${currentPage === 'sessions' ? 'active' : ''}`}
+            onClick={() => navigate('sessions')}
+          >
+            Sessions
+          </button>
+          <button
+            class={`nav-link ${currentPage === 'metrics' ? 'active' : ''}`}
+            onClick={() => navigate('metrics')}
+          >
+            Metrics
+          </button>
         </nav>
         <div class="sidebar-footer">
-          <a href="https://github.com/geekheitian/sec-gateway" target="_blank">
+          <a href="https://github.com/geekheitian/sec-gateway" target="_blank" rel="noopener">
             GitHub
           </a>
         </div>

@@ -1,14 +1,12 @@
-import { useState } from 'preact/hooks';
+import { AppProvider, useNavigation } from './Navigation';
 import { Layout } from './components/Layout';
 import { Overview } from './pages/Overview';
 import { Sessions } from './pages/Sessions';
 import { Metrics } from './pages/Metrics';
 import './app.css';
 
-type Page = 'overview' | 'sessions' | 'metrics';
-
-export function App() {
-  const [currentPage] = useState<Page>('overview');
+function AppContent() {
+  const { currentPage } = useNavigation();
 
   return (
     <Layout>
@@ -16,5 +14,13 @@ export function App() {
       {currentPage === 'sessions' && <Sessions />}
       {currentPage === 'metrics' && <Metrics />}
     </Layout>
+  );
+}
+
+export function App() {
+  return (
+    <AppProvider>
+      <AppContent />
+    </AppProvider>
   );
 }

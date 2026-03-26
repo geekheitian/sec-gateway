@@ -64,16 +64,22 @@ body {
   padding: 1rem 0;
 }
 
-.sidebar-nav a {
+.sidebar-nav .nav-link {
   display: block;
+  width: 100%;
   padding: 0.75rem 1.5rem;
   color: var(--text-secondary);
-  text-decoration: none;
+  background: transparent;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  font-size: inherit;
+  font-family: inherit;
   transition: all 0.2s;
 }
 
-.sidebar-nav a:hover,
-.sidebar-nav a.active {
+.sidebar-nav .nav-link:hover,
+.sidebar-nav .nav-link.active {
   background: var(--bg-tertiary);
   color: var(--text-primary);
 }
