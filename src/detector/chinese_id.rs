@@ -2,6 +2,7 @@
 //!
 //! 本模块提供中国身份证号的正则检测功能，支持 18 位身份证号格式验证。
 
+use super::{PIIMatch, PIIType};
 use regex::Regex;
 
 /// 中国身份证号正则表达式
@@ -18,10 +19,18 @@ const CHINESE_ID_PATTERN: &str =
 /// - `usize`: 匹配的起始位置
 /// - `usize`: 匹配的结束位置
 /// - `String`: 匹配到的身份证号文本
-pub fn detect_chinese_id(text: &str) -> Vec<(usize, usize, String)> {
+pub fn detect_chinese_id(text: &str) -> Vec<PIIMatch> {
     let re = Regex::new(CHINESE_ID_PATTERN).expect("Failed to compile Chinese ID regex");
     re.find_iter(text)
-        .map(|m| (m.start(), m.end(), m.as_str().to_string()))
+        .map(|m| {
+            PIIMatch::new(
+                PIIType::ChineseID,
+                m.as_str().to_string(),
+                m.start(),
+                m.end(),
+                1.0,
+            )
+        })
         .collect()
 }
 
@@ -34,7 +43,8 @@ mod tests {
         let text = "ID:110101199001011234";
         let results = detect_chinese_id(text);
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].2, "110101199001011234");
+        assert_eq!(results[0].value, "110101199001011234");
+        assert_eq!(results[0].pii_type, PIIType::ChineseID);
     }
 
     #[test]
@@ -56,6 +66,6 @@ mod tests {
         let text = "ID:11010119900101123X";
         let results = detect_chinese_id(text);
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].2, "11010119900101123X");
+        assert_eq!(results[0].value, "11010119900101123X");
     }
 }

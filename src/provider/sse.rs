@@ -80,3 +80,43 @@ pub fn parse_sse_text(text: &str) -> Vec<Result<ProviderStreamEvent, ProviderErr
     events.push(Ok(ProviderStreamEvent::Done));
     events
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_sse_text_json_data_and_done() {
+        let text = "data: {\"delta\":\"hello\"}\n\ndata: [DONE]\n\n";
+        let events = parse_sse_text(text);
+
+        assert!(matches!(events[0], Ok(ProviderStreamEvent::JsonDelta(_))));
+        assert!(matches!(events[1], Ok(ProviderStreamEvent::Done)));
+        assert!(matches!(events.last(), Some(Ok(ProviderStreamEvent::Done))));
+    }
+
+    #[test]
+    fn test_parse_sse_text_comment_and_retry() {
+        let text = ": keepalive\nretry: 1500\n\n";
+        let events = parse_sse_text(text);
+
+        assert_eq!(
+            events[0],
+            Ok(ProviderStreamEvent::Comment("keepalive".to_string()))
+        );
+        assert_eq!(events[1], Ok(ProviderStreamEvent::Retry(1500)));
+        assert!(matches!(events.last(), Some(Ok(ProviderStreamEvent::Done))));
+    }
+
+    #[test]
+    fn test_parse_sse_text_plain_fallback() {
+        let text = "plain text payload";
+        let events = parse_sse_text(text);
+
+        assert_eq!(
+            events[0],
+            Ok(ProviderStreamEvent::Data("plain text payload".to_string()))
+        );
+        assert!(matches!(events.last(), Some(Ok(ProviderStreamEvent::Done))));
+    }
+}

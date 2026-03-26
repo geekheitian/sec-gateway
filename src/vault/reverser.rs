@@ -14,6 +14,16 @@ impl Reverser {
     }
 
     pub fn restore_response(&self, session_id: &str, body: &str) -> Result<String, String> {
+        let tokens = self.find_tokens_in_text(body);
+        self.restore_response_with_allowlist(session_id, body, &tokens)
+    }
+
+    pub fn restore_response_with_allowlist(
+        &self,
+        session_id: &str,
+        body: &str,
+        allowed_tokens: &HashSet<String>,
+    ) -> Result<String, String> {
         let mut result = body.to_string();
         let mut offset: i64 = 0;
 
@@ -28,6 +38,9 @@ impl Reverser {
                 .collect();
 
             for (start, end, token) in matches.into_iter().rev() {
+                if !allowed_tokens.contains(&token) {
+                    continue;
+                }
                 if let Some(original) = self.vault.retrieve(session_id, &token)? {
                     let adj_start = (start as i64 + offset) as usize;
                     let adj_end = (end as i64 + offset) as usize;
@@ -189,6 +202,38 @@ mod tests {
 
         assert!(restored.contains("110101199001011234"));
         assert!(restored.contains("test@example.com"));
+    }
+
+    #[test]
+    fn test_restore_response_with_allowlist_only_restores_listed_token() {
+        let vault = PrivacyVault::new();
+        vault
+            .store(
+                "session1",
+                "165455343746803619".to_string(),
+                "110101199001011234".to_string(),
+            )
+            .unwrap();
+        vault
+            .store(
+                "session1",
+                "284759384726584920".to_string(),
+                "320101198001011234".to_string(),
+            )
+            .unwrap();
+
+        let reverser = Reverser::new(vault, [0u8; 32]);
+        let body = r#"{"a":"165455343746803619","b":"284759384726584920"}"#;
+        let allowlist: HashSet<String> =
+            vec!["165455343746803619".to_string()].into_iter().collect();
+
+        let restored = reverser
+            .restore_response_with_allowlist("session1", body, &allowlist)
+            .unwrap();
+
+        assert!(restored.contains("110101199001011234"));
+        assert!(restored.contains("284759384726584920"));
+        assert!(!restored.contains("320101198001011234"));
     }
 
     #[test]

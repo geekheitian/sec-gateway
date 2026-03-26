@@ -16,3 +16,36 @@ pub enum ProviderError {
     #[error("transport error: {0}")]
     Transport(String),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_provider_error_display_messages() {
+        assert_eq!(
+            ProviderError::InvalidRequest("bad payload".to_string()).to_string(),
+            "invalid request: bad payload"
+        );
+        assert_eq!(
+            ProviderError::Unauthorized("missing token".to_string()).to_string(),
+            "unauthorized: missing token"
+        );
+        assert_eq!(
+            ProviderError::RateLimited("too many requests".to_string()).to_string(),
+            "rate limited: too many requests"
+        );
+        assert_eq!(
+            ProviderError::Upstream(502, "bad gateway".to_string()).to_string(),
+            "upstream error (502): bad gateway"
+        );
+        assert_eq!(
+            ProviderError::Timeout("deadline exceeded".to_string()).to_string(),
+            "timeout: deadline exceeded"
+        );
+        assert_eq!(
+            ProviderError::Transport("socket closed".to_string()).to_string(),
+            "transport error: socket closed"
+        );
+    }
+}

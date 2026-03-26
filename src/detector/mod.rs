@@ -3,41 +3,71 @@
 //! 本模块提供各种 PII（个人身份信息）的检测功能
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+
+use crate::config::DetectorConfig;
+use regex::Regex;
 
 pub mod api_key;
 pub mod chinese_id;
+pub mod credit_card;
+pub mod database_connection_string;
 pub mod email;
 pub mod entropy;
+pub mod ip_address;
+pub mod jwt;
 pub mod phone;
+
+pub use registry::active_detectors;
+
+mod registry;
 
 /// PII类型枚举
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum PIIType {
-    /// 中国身份证号
     ChineseID,
-    /// 手机号
+    CreditCard,
     PhoneNumber,
-    /// 邮箱地址
     Email,
-    /// API密钥
+    IPAddress,
+    DatabaseConnectionString,
+    JWT,
     APIKey,
-    /// API Secret
     APISecret,
-    /// AWS Access Key
     AWSAccessKey,
-    /// AWS Secret Key
     AWSSecretKey,
-    /// GitHub Token
     GitHubToken,
 }
 
 impl PIIType {
+    pub fn from_str(value: &str) -> Option<Self> {
+        match value {
+            "chinese_id" => Some(PIIType::ChineseID),
+            "credit_card" => Some(PIIType::CreditCard),
+            "phone_number" => Some(PIIType::PhoneNumber),
+            "email" => Some(PIIType::Email),
+            "ip_address" => Some(PIIType::IPAddress),
+            "database_connection_string" => Some(PIIType::DatabaseConnectionString),
+            "jwt" => Some(PIIType::JWT),
+            "api_key" => Some(PIIType::APIKey),
+            "api_secret" => Some(PIIType::APISecret),
+            "aws_access_key" => Some(PIIType::AWSAccessKey),
+            "aws_secret_key" => Some(PIIType::AWSSecretKey),
+            "github_token" => Some(PIIType::GitHubToken),
+            _ => None,
+        }
+    }
+
     /// 获取PII类型的字符串表示
     pub fn as_str(&self) -> &str {
         match self {
             PIIType::ChineseID => "chinese_id",
+            PIIType::CreditCard => "credit_card",
             PIIType::PhoneNumber => "phone_number",
             PIIType::Email => "email",
+            PIIType::IPAddress => "ip_address",
+            PIIType::DatabaseConnectionString => "database_connection_string",
+            PIIType::JWT => "jwt",
             PIIType::APIKey => "api_key",
             PIIType::APISecret => "api_secret",
             PIIType::AWSAccessKey => "aws_access_key",
@@ -45,6 +75,35 @@ impl PIIType {
             PIIType::GitHubToken => "github_token",
         }
     }
+}
+
+pub fn detect_custom_patterns(
+    text: &str,
+    detectors: &HashMap<String, DetectorConfig>,
+) -> Vec<PIIMatch> {
+    let mut results = Vec::new();
+
+    for (pii_type_key, detector_cfg) in detectors {
+        let Some(pii_type) = PIIType::from_str(pii_type_key.as_str()) else {
+            continue;
+        };
+
+        let Ok(re) = Regex::new(detector_cfg.pattern.as_str()) else {
+            continue;
+        };
+
+        for m in re.find_iter(text) {
+            results.push(PIIMatch::new(
+                pii_type.clone(),
+                m.as_str().to_string(),
+                m.start(),
+                m.end(),
+                detector_cfg.confidence_threshold,
+            ));
+        }
+    }
+
+    results
 }
 
 /// PII检测匹配结果
@@ -98,6 +157,16 @@ mod tests {
     }
 
     #[test]
+    fn test_pii_type_from_str() {
+        assert_eq!(PIIType::from_str("chinese_id"), Some(PIIType::ChineseID));
+        assert_eq!(
+            PIIType::from_str("database_connection_string"),
+            Some(PIIType::DatabaseConnectionString)
+        );
+        assert_eq!(PIIType::from_str("unknown_type"), None);
+    }
+
+    #[test]
     fn test_pii_match_creation() {
         let match_result = PIIMatch::new(
             PIIType::ChineseID,
@@ -118,5 +187,23 @@ mod tests {
         let match_result =
             PIIMatch::new(PIIType::Email, "test@example.com".to_string(), 0, 16, 0.95);
         assert_eq!(match_result.range(), 0..16);
+    }
+
+    #[test]
+    fn test_detect_custom_patterns() {
+        let mut detectors = HashMap::new();
+        detectors.insert(
+            "email".to_string(),
+            DetectorConfig {
+                pattern: "[a-zA-Z0-9._%+-]+@example\\.com".to_string(),
+                confidence_threshold: 0.77,
+            },
+        );
+
+        let results = detect_custom_patterns("contact me at alice@example.com", &detectors);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].pii_type, PIIType::Email);
+        assert_eq!(results[0].value, "alice@example.com");
+        assert_eq!(results[0].confidence, 0.77);
     }
 }

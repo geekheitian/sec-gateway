@@ -62,3 +62,53 @@ impl Provider for GeminiProvider {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::provider::{ProviderMessage, ProviderMetadata};
+
+    fn sample_request() -> ProviderRequest {
+        let mut headers = std::collections::HashMap::new();
+        headers.insert("x-api-key".to_string(), "test-key".to_string());
+
+        ProviderRequest {
+            method: "POST".to_string(),
+            model: "gemini-1.5-flash".to_string(),
+            messages: vec![ProviderMessage {
+                role: "user".to_string(),
+                content: "hello gemini".to_string(),
+            }],
+            headers,
+            metadata: ProviderMetadata {
+                session_id: Some("s1".to_string()),
+                trace_id: Some("t1".to_string()),
+                streaming: false,
+            },
+            raw_body: None,
+        }
+    }
+
+    #[test]
+    fn test_request_body_contains_contents_and_stream_flag() {
+        let provider = GeminiProvider::new("https://generativelanguage.googleapis.com/v1beta/models/gemini:generateContent".to_string());
+        let body = provider.request_body(&sample_request(), true);
+        let parsed: serde_json::Value = serde_json::from_slice(&body).expect("valid json body");
+
+        assert_eq!(parsed["stream"], serde_json::json!(true));
+        assert_eq!(parsed["contents"][0]["role"], serde_json::json!("user"));
+        assert_eq!(parsed["contents"][0]["parts"][0]["text"], serde_json::json!("hello gemini"));
+    }
+
+    #[test]
+    fn test_stream_url_appends_alt_sse() {
+        let provider = GeminiProvider::new(
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini:streamGenerateContent?key=abc"
+                .to_string(),
+        );
+        let url = provider.stream_url().expect("valid stream url");
+
+        assert!(url.contains("alt=sse"));
+        assert!(url.contains("key=abc"));
+    }
+}

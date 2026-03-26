@@ -1,6 +1,8 @@
+use sec_gateway::config::DetectorConfig;
 use sec_gateway::detector::{
-    api_key::detect_api_keys, chinese_id::detect_chinese_id, email::detect_email,
-    phone::detect_phone_number, PIIType,
+    api_key::detect_api_keys, chinese_id::detect_chinese_id,
+    database_connection_string::detect_database_connection_string, detect_custom_patterns,
+    email::detect_email, ip_address::detect_ip_address, phone::detect_phone_number, PIIType,
 };
 
 #[test]
@@ -15,7 +17,7 @@ fn test_chinese_id_detection_accuracy() {
         let text = format!("ID: {}", id);
         let results = detect_chinese_id(&text);
         assert_eq!(results.len(), 1, "Failed to detect valid ID: {}", id);
-        assert_eq!(results[0].2, id);
+        assert_eq!(results[0].value, id);
     }
 }
 
@@ -54,6 +56,23 @@ fn test_phone_number_no_false_positives() {
         let text = format!("Phone: {}", phone);
         let results = detect_phone_number(&text);
         assert_eq!(results.len(), 0, "False positive for phone: {}", phone);
+    }
+}
+
+#[test]
+fn test_phone_number_international_detection() {
+    let valid_international = vec!["+1 202-555-0123", "+44 20 7946 0958"];
+
+    for phone in valid_international {
+        let text = format!("Phone: {}", phone);
+        let results = detect_phone_number(&text);
+        assert_eq!(
+            results.len(),
+            1,
+            "Failed to detect international phone: {}",
+            phone
+        );
+        assert_eq!(results[0].value, phone);
     }
 }
 
@@ -138,7 +157,7 @@ fn test_multiple_pii_types_in_single_text() {
     all_detections.extend(
         id_results
             .into_iter()
-            .map(|(start, end, value)| (PIIType::ChineseID, start, end, value)),
+            .map(|m| (m.pii_type, m.start, m.end, m.value)),
     );
 
     let phone_results = detect_phone_number(text);
@@ -271,4 +290,44 @@ fn test_detection_accuracy_rate() {
 
     let accuracy = (correct as f64 / total as f64) * 100.0;
     assert!(accuracy >= 95.0, "Accuracy {} is below 95%", accuracy);
+}
+
+#[test]
+fn test_ip_address_detection() {
+    let text = "client_ip=192.168.1.100";
+    let results = detect_ip_address(text);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].value, "192.168.1.100");
+    assert_eq!(results[0].pii_type, PIIType::IPAddress);
+}
+
+#[test]
+fn test_database_connection_string_detection() {
+    let text = "dsn=postgres://user:pass@localhost:5432/appdb";
+    let results = detect_database_connection_string(text);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].pii_type, PIIType::DatabaseConnectionString);
+    assert_eq!(
+        results[0].value,
+        "postgres://user:pass@localhost:5432/appdb"
+    );
+}
+
+#[test]
+fn test_custom_regex_detector_from_config() {
+    let mut detectors = std::collections::HashMap::new();
+    detectors.insert(
+        "api_secret".to_string(),
+        DetectorConfig {
+            pattern: "secret_[A-Za-z0-9]{8}".to_string(),
+            confidence_threshold: 0.81,
+        },
+    );
+
+    let text = "token=secret_AbCd1234";
+    let results = detect_custom_patterns(text, &detectors);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].pii_type, PIIType::APISecret);
+    assert_eq!(results[0].value, "secret_AbCd1234");
+    assert_eq!(results[0].confidence, 0.81);
 }

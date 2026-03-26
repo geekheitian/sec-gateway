@@ -17,6 +17,16 @@ pub enum ProviderKind {
     Gemini,
 }
 
+impl From<ProviderKind> for String {
+    fn from(kind: ProviderKind) -> Self {
+        match kind {
+            ProviderKind::OpenAI => "openai".to_string(),
+            ProviderKind::Anthropic => "anthropic".to_string(),
+            ProviderKind::Gemini => "gemini".to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderConfig {
     pub kind: ProviderKind,
@@ -35,6 +45,8 @@ pub struct ServerConfig {
 pub struct PiiConfig {
     pub types: Vec<String>,
     pub masking_strategy: String,
+    #[serde(default)]
+    pub per_type_masking_strategies: std::collections::HashMap<String, String>,
     pub detectors: std::collections::HashMap<String, DetectorConfig>,
 }
 
@@ -46,8 +58,49 @@ pub struct DetectorConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecurityConfig {
+    pub tls: TlsConfig,
+    pub auth: AuthConfig,
+    pub proxy: ProxyConfig,
     pub rate_limit: RateLimitConfig,
     pub cors: CorsConfig,
+    pub audit: AuditConfig,
+    pub metrics: MetricsConfig,
+    pub session: SessionConfig,
+    pub key_rotation: KeyRotationConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KeyRotationConfig {
+    pub enabled: bool,
+    #[serde(default = "default_rotation_interval_days")]
+    pub interval_days: u64,
+    pub auto_rotate: bool,
+}
+
+fn default_rotation_interval_days() -> u64 {
+    90
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProxyConfig {
+    pub trust_forwarded_headers: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TlsConfig {
+    pub enabled: bool,
+    pub cert_path: Option<String>,
+    pub key_path: Option<String>,
+    #[serde(default)]
+    pub require_forwarded_https: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuthConfig {
+    pub enabled: bool,
+    pub bearer_token: Option<String>,
+    pub header_name: Option<String>,
+    pub header_value: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -60,6 +113,37 @@ pub struct RateLimitConfig {
 pub struct CorsConfig {
     pub enabled: bool,
     pub allowed_origins: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditConfig {
+    pub enabled: bool,
+    pub log_headers: bool,
+    pub file_path: Option<String>,
+    #[serde(default = "default_max_file_size_mb")]
+    pub max_file_size_mb: u64,
+    #[serde(default = "default_rotation_strategy")]
+    pub rotation_strategy: String,
+}
+
+fn default_max_file_size_mb() -> u64 {
+    100
+}
+
+fn default_rotation_strategy() -> String {
+    "daily".to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetricsConfig {
+    pub enabled: bool,
+    pub path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionConfig {
+    pub cleanup_interval_seconds: u64,
+    pub ttl_seconds: u64,
 }
 
 impl Config {
@@ -103,6 +187,10 @@ impl Config {
         if let Ok(log_level) = std::env::var("RUST_LOG") {
             self.server.log_level = log_level;
         }
+        if let Ok(token) = std::env::var("API_AUTH_TOKEN") {
+            self.security.auth.bearer_token = Some(token);
+            self.security.auth.enabled = true;
+        }
     }
 }
 
@@ -133,6 +221,12 @@ mod tests {
         assert_eq!(config.server.port, 8080);
         assert!(config.pii.types.contains(&"chinese_id".to_string()));
         assert_eq!(config.provider.kind, ProviderKind::OpenAI);
+        assert!(!config.security.proxy.trust_forwarded_headers);
+        assert!(config.security.metrics.enabled);
+        assert_eq!(config.security.metrics.path, "/metrics");
+        assert_eq!(config.security.cors.allowed_origins.len(), 2);
+        assert!(config.security.audit.enabled);
+        assert_eq!(config.security.session.ttl_seconds, 1800);
     }
 
     #[test]
@@ -163,5 +257,43 @@ mod tests {
         std::env::remove_var("PROVIDER_KIND");
         std::env::remove_var("PROVIDER_MODEL");
         std::env::remove_var("PROVIDER_TARGET_URL");
+    }
+
+    #[test]
+    fn test_per_type_masking_strategies_loaded() {
+        let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::remove_var("SERVER_PORT");
+        std::env::remove_var("SERVER_HOST");
+        std::env::remove_var("TARGET_URL");
+        std::env::remove_var("PROVIDER_KIND");
+        std::env::remove_var("PROVIDER_MODEL");
+        std::env::remove_var("PROVIDER_TARGET_URL");
+        std::env::remove_var("RUST_LOG");
+
+        let config = Config::load_default().unwrap();
+
+        assert_eq!(
+            config.pii.per_type_masking_strategies.get("credit_card"),
+            Some(&"hash".to_string())
+        );
+        assert_eq!(
+            config.pii.per_type_masking_strategies.get("jwt"),
+            Some(&"hash".to_string())
+        );
+        assert_eq!(
+            config.pii.per_type_masking_strategies.get("email"),
+            Some(&"replace".to_string())
+        );
+        assert_eq!(
+            config.pii.per_type_masking_strategies.get("ip_address"),
+            Some(&"replace".to_string())
+        );
+        assert_eq!(
+            config
+                .pii
+                .per_type_masking_strategies
+                .get("database_connection_string"),
+            Some(&"hash".to_string())
+        );
     }
 }

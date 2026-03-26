@@ -1,7 +1,8 @@
 use sec_gateway::crypto::fpe::FPECipher;
 use sec_gateway::detector::{
-    api_key::detect_api_keys, chinese_id::detect_chinese_id, email::detect_email,
-    phone::detect_phone_number, PIIMatch, PIIType,
+    api_key::detect_api_keys, chinese_id::detect_chinese_id,
+    database_connection_string::detect_database_connection_string, email::detect_email,
+    ip_address::detect_ip_address, phone::detect_phone_number, PIIMatch, PIIType,
 };
 use sec_gateway::masker::hash::hash_value;
 use sec_gateway::vault::PrivacyVault;
@@ -15,10 +16,7 @@ fn test_e2e_pii_masking_flow_chinese_id() {
     let body = r#"{"messages":[{"role":"user","content":"My ID is 110101199001011234"}]}"#;
     let session_id = "test-session-e2e-001";
 
-    let detections: Vec<PIIMatch> = detect_chinese_id(body)
-        .into_iter()
-        .map(|(start, end, value)| PIIMatch::new(PIIType::ChineseID, value, start, end, 1.0))
-        .collect();
+    let detections: Vec<PIIMatch> = detect_chinese_id(body).into_iter().collect();
 
     assert_eq!(detections.len(), 1, "Should detect 1 Chinese ID");
     assert_eq!(detections[0].value, "110101199001011234");
@@ -154,14 +152,12 @@ fn test_e2e_multiple_pii_types_single_request() {
     let session_id = "test-session-e2e-004";
 
     let mut all_matches: Vec<PIIMatch> = Vec::new();
-    all_matches.extend(
-        detect_chinese_id(body)
-            .into_iter()
-            .map(|(s, e, v)| PIIMatch::new(PIIType::ChineseID, v, s, e, 1.0)),
-    );
+    all_matches.extend(detect_chinese_id(body));
     all_matches.extend(detect_phone_number(body));
     all_matches.extend(detect_email(body));
     all_matches.extend(detect_api_keys(body));
+    all_matches.extend(detect_ip_address(body));
+    all_matches.extend(detect_database_connection_string(body));
 
     assert_eq!(all_matches.len(), 4, "Should detect all 4 PII types");
 
@@ -179,7 +175,11 @@ fn test_e2e_multiple_pii_types_single_request() {
             | PIIType::GitHubToken
             | PIIType::AWSAccessKey
             | PIIType::AWSSecretKey
-            | PIIType::APISecret => hash_value(&pii.value),
+            | PIIType::APISecret
+            | PIIType::CreditCard
+            | PIIType::IPAddress
+            | PIIType::DatabaseConnectionString
+            | PIIType::JWT => hash_value(&pii.value),
             PIIType::Email => "[REDACTED_EMAIL]".to_string(),
         };
 
@@ -255,11 +255,7 @@ fn test_e2e_zero_data_leakage() {
         let body = format!(r#"{{"sensitive":"{}"}}"#, pii_value);
 
         let mut all_matches: Vec<PIIMatch> = Vec::new();
-        all_matches.extend(
-            detect_chinese_id(&body)
-                .into_iter()
-                .map(|(s, e, v)| PIIMatch::new(PIIType::ChineseID, v, s, e, 1.0)),
-        );
+        all_matches.extend(detect_chinese_id(&body));
         all_matches.extend(detect_phone_number(&body));
         all_matches.extend(detect_email(&body));
         all_matches.extend(detect_api_keys(&body));

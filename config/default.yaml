@@ -11,7 +11,23 @@ provider:
 pii:
   types:
     - chinese_id
+    - phone_number
+    - email
+    - credit_card
+    - jwt
+    - api_key
+    - ip_address
+    - database_connection_string
   masking_strategy: "replace"
+  per_type_masking_strategies:
+    chinese_id: "fpe"
+    phone_number: "fpe"
+    email: "replace"
+    credit_card: "hash"
+    jwt: "hash"
+    api_key: "hash"
+    ip_address: "replace"
+    database_connection_string: "hash"
   
   detectors:
     chinese_id:
@@ -19,6 +35,21 @@ pii:
       confidence_threshold: 0.9
 
 security:
+  tls:
+    enabled: false
+    cert_path: null
+    key_path: null
+    require_forwarded_https: false
+
+  auth:
+    enabled: false
+    bearer_token: null
+    header_name: null
+    header_value: null
+
+  proxy:
+    trust_forwarded_headers: false
+
   rate_limit:
     requests_per_minute: 60
     burst_size: 10
@@ -26,4 +57,25 @@ security:
   cors:
     enabled: true
     allowed_origins:
-      - "*"
+      - "http://localhost:3000"
+      - "http://127.0.0.1:3000"
+
+  audit:
+    enabled: true
+    log_headers: false
+    file_path: "logs/audit.log"
+    max_file_size_mb: 100
+    rotation_strategy: "daily"
+
+  metrics:
+    enabled: true
+    path: "/metrics"
+
+  session:
+    cleanup_interval_seconds: 300
+    ttl_seconds: 1800
+  
+  key_rotation:
+    enabled: false
+    interval_days: 90
+    auto_rotate: false

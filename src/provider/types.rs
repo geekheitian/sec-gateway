@@ -43,3 +43,47 @@ pub struct ProviderResponse {
     pub content_type: String,
     pub body: bytes::Bytes,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_provider_request_serde_roundtrip() {
+        let mut headers = std::collections::HashMap::new();
+        headers.insert("authorization".to_string(), "Bearer test-token".to_string());
+
+        let request = ProviderRequest {
+            method: "POST".to_string(),
+            model: "gpt-4o-mini".to_string(),
+            messages: vec![ProviderMessage {
+                role: "user".to_string(),
+                content: "hello".to_string(),
+            }],
+            headers,
+            metadata: ProviderMetadata {
+                session_id: Some("session-1".to_string()),
+                trace_id: Some("trace-1".to_string()),
+                streaming: true,
+            },
+            raw_body: Some(bytes::Bytes::from("{\"foo\":\"bar\"}")),
+        };
+
+        let json = serde_json::to_string(&request).expect("serialize request");
+        let parsed: ProviderRequest = serde_json::from_str(&json).expect("deserialize request");
+        assert_eq!(parsed, request);
+    }
+
+    #[test]
+    fn test_provider_response_serde_roundtrip() {
+        let response = ProviderResponse {
+            status: 200,
+            content_type: "application/json".to_string(),
+            body: bytes::Bytes::from("{\"ok\":true}"),
+        };
+
+        let json = serde_json::to_string(&response).expect("serialize response");
+        let parsed: ProviderResponse = serde_json::from_str(&json).expect("deserialize response");
+        assert_eq!(parsed, response);
+    }
+}

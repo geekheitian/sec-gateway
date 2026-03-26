@@ -65,3 +65,48 @@ impl Provider for AnthropicProvider {
         Ok(ProviderStream { content_type: response.content_type, events: Box::pin(futures_util::stream::iter(events)) })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::provider::{ProviderMessage, ProviderMetadata};
+
+    fn sample_request() -> ProviderRequest {
+        ProviderRequest {
+            method: "POST".to_string(),
+            model: "claude-3-5-sonnet".to_string(),
+            messages: vec![ProviderMessage {
+                role: "user".to_string(),
+                content: "hello".to_string(),
+            }],
+            headers: std::collections::HashMap::new(),
+            metadata: ProviderMetadata {
+                session_id: Some("s1".to_string()),
+                trace_id: Some("t1".to_string()),
+                streaming: false,
+            },
+            raw_body: None,
+        }
+    }
+
+    #[test]
+    fn test_transform_request_non_stream() {
+        let provider = AnthropicProvider::new("https://api.anthropic.com/v1/messages".to_string());
+        let body = provider.transform_request(&sample_request(), false);
+
+        assert_eq!(body["model"], serde_json::json!("claude-3-5-sonnet"));
+        assert_eq!(body["stream"], serde_json::json!(false));
+        assert_eq!(body["messages"][0]["role"], serde_json::json!("user"));
+        assert_eq!(body["messages"][0]["content"], serde_json::json!("hello"));
+    }
+
+    #[test]
+    fn test_request_body_stream_flag() {
+        let provider = AnthropicProvider::new("https://api.anthropic.com/v1/messages".to_string());
+        let request = sample_request();
+
+        let body = provider.request_body(&request, true);
+        let parsed: serde_json::Value = serde_json::from_slice(&body).expect("valid json body");
+        assert_eq!(parsed["stream"], serde_json::json!(true));
+    }
+}
