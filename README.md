@@ -37,6 +37,13 @@ sec-gateway 是一个开源的隐私保护AI网关，部署在用户本地环境
 ✅ **密钥轮换** - 自动Vault加密密钥轮换 + 无缝重加密  
 ✅ **指标暴露** - Prometheus格式 `/metrics` endpoint  
 ✅ **会话管理** - `GET /sessions` 列表 + `DELETE /sessions/:id` 清理  
+✅ **Dashboard UI** - Preact + Vite 可视化界面（Overview/Sessions/Metrics）
+
+#### Phase 3 Dashboard UI
+
+✅ **Overview** - 服务状态、活跃会话数、FPE 后端信息  
+✅ **Sessions** - 会话列表查看、删除会话  
+✅ **Metrics** - Prometheus 指标解析与可视化  
 
 ---
 
@@ -51,10 +58,15 @@ cd sec-gateway
 cargo run --release
 ```
 
-### 方法2: 自动验证脚本
+### 方法2: 预构建二进制
 
 ```bash
-./verify.sh
+# 下载 release 二进制
+curl -L https://github.com/geekheitian/sec-gateway/releases/latest/download/sec-gateway -o sec-gateway
+chmod +x sec-gateway
+
+# 运行
+./sec-gateway
 ```
 
 ### 方法3: Docker 部署
@@ -62,6 +74,12 @@ cargo run --release
 ```bash
 docker build -t sec-gateway:latest .
 docker run -p 8080:8080 sec-gateway:latest
+```
+
+### 方法4: 自动验证脚本
+
+```bash
+./verify.sh
 ```
 
 ### 验证部署
@@ -75,7 +93,7 @@ curl http://localhost:8080/health
 {"status":"ok","service":"sec-gateway","version":"0.1.0"}
 ```
 
-### Dashboard UI (可选)
+### Dashboard UI
 
 启动本地 Dashboard 可视化界面：
 
@@ -86,9 +104,24 @@ npm run dev
 ```
 
 然后访问 http://localhost:5173 查看：
-- **Overview** - 服务状态、会话统计
-- **Sessions** - 会话列表、删除会话
-- **Metrics** - Prometheus 指标可视化
+
+| 页面 | 功能 |
+|------|------|
+| **Overview** | 服务状态、版本号、活跃会话数 |
+| **Sessions** | 会话列表、创建时间、最后访问、请求计数、删除 |
+| **Metrics** | Total/Blocked/PII 请求数、FPE 后端、原始 Prometheus 格式 |
+
+**API 配置**：
+```bash
+# 通过环境变量指定后端地址（默认 http://localhost:8080）
+VITE_API_BASE=http://localhost:8080 npm run dev
+```
+
+**生产部署**：
+```bash
+npm run build
+# 构建产物在 dashboard/dist/
+# 可通过 nginx 或直接嵌入静态文件服务
 
 ---
 
@@ -207,6 +240,7 @@ security:
 
 - **[快速开始指南](QUICKSTART.md)** - 详细部署步骤
 - **[部署指南](docs/DEPLOYMENT.md)** - wbcrypto-mode 编译与环境变量配置
+- **[Dashboard 使用指南](docs/DASHBOARD.md)** - Dashboard UI 安装与配置
 - **[验证清单](VERIFY.md)** - 人工验证检查项
 - **[技术设计](.sisyphus/drafts/privacy-gateway-design.md)** - 完整架构设计
 - **[工作计划](.sisyphus/plans/privacy-gateway.md)** - Phase 0-3 路线图
@@ -290,10 +324,11 @@ echo "你好 世界" | ai
 
 ## 📊 项目状态
 
-**当前版本**: Phase 2C + SM4-FF1 (生产就绪)  
+**当前版本**: Phase 2D + Phase 3 (Dashboard)  
 **测试覆盖**: 287/287 通过 (100%)  
-**代码行数**: ~3200 lines Rust  
-**Git提交**: 31 commits  
+**代码行数**: ~4800 lines Rust + ~1000 lines TypeScript  
+**Git提交**: 33 commits  
+**二进制大小**: 7.2 MB (release)
 
 ### 开发路线图
 
@@ -304,7 +339,7 @@ echo "你好 世界" | ai
 - ✅ **Phase 2B** (已完成) - PII扩展至8种完整类型 + 配置驱动检测
 - ✅ **Phase 2C** (已完成) - 安全加固: 认证/速率限制/CORS/审计日志/会话元数据/密钥轮换/指标暴露
 - ✅ **Phase 2D** (已完成) - SM4-FF1 国密算法集成 + 双后端运行时切换 + 性能基准测试
-- ⏳ **Phase 3** (进行中) - NER 模型集成 + Dashboard UI
+- ✅ **Phase 3** (进行中) - Dashboard UI + NER 模型集成 (UI已完成)
 
 ### 前端/UI 启动时机
 
