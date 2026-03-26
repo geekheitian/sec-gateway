@@ -19,6 +19,7 @@ Thumbs.db
 config/local.yaml
 *.key
 *.pem
+ai.sh
 
 # Logs
 *.log
