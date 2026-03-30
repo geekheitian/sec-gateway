@@ -1,4 +1,5 @@
 use chrono::{DateTime, Duration, Utc};
+use rand::{rngs::OsRng, RngCore};
 use std::sync::{Arc, RwLock};
 
 pub struct KeyRotation {
@@ -23,22 +24,8 @@ impl KeyRotation {
     }
 
     pub fn rotate_key(&self) -> Result<[u8; 32], String> {
-        use sha2::{Digest, Sha256};
-        use std::time::{SystemTime, UNIX_EPOCH};
-
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-
-        let mut hasher = Sha256::new();
-        hasher.update(std::process::id().to_le_bytes());
-        hasher.update(nanos.to_le_bytes());
-        hasher.update(format!("{:?}", std::thread::current().id()).as_bytes());
-        let digest = hasher.finalize();
-
         let mut new_key = [0u8; 32];
-        new_key.copy_from_slice(&digest[..32]);
+        OsRng.fill_bytes(&mut new_key);
 
         let mut current = self
             .current_key

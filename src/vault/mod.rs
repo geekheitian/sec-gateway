@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use rand::{rngs::OsRng, RngCore};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
@@ -20,26 +21,29 @@ type SessionData = (HashMap<String, Vec<u8>>, Instant, SessionMetadata);
 
 pub struct PrivacyVault {
     storage: Arc<RwLock<HashMap<String, SessionData>>>,
-    encryption_key: [u8; 32],
+    encryption_key: Arc<RwLock<[u8; 32]>>,
 }
 
 impl PrivacyVault {
     pub fn new() -> Self {
-        let mut hasher = Sha256::new();
-        hasher.update(std::process::id().to_le_bytes());
-        hasher.update(Instant::now().elapsed().as_nanos().to_le_bytes());
-        let digest = hasher.finalize();
         let mut key = [0u8; 32];
-        key.copy_from_slice(&digest[..32]);
+        OsRng.fill_bytes(&mut key);
 
         Self {
             storage: Arc::new(RwLock::new(HashMap::new())),
-            encryption_key: key,
+            encryption_key: Arc::new(RwLock::new(key)),
+        }
+    }
+
+    pub fn with_key(key: [u8; 32]) -> Self {
+        Self {
+            storage: Arc::new(RwLock::new(HashMap::new())),
+            encryption_key: Arc::new(RwLock::new(key)),
         }
     }
 
     pub fn get_encryption_key(&self) -> [u8; 32] {
-        self.encryption_key
+        *self.encryption_key.read().unwrap()
     }
 
     fn derive_nonce(session_id: &str, token: &str) -> [u8; 32] {
@@ -54,12 +58,13 @@ impl PrivacyVault {
 
     fn xor_crypt(&self, session_id: &str, token: &str, data: &[u8]) -> Vec<u8> {
         let nonce = Self::derive_nonce(session_id, token);
+        let key = *self.encryption_key.read().unwrap();
         let mut out = Vec::with_capacity(data.len());
         let mut counter: u64 = 0;
 
         while out.len() < data.len() {
             let mut hasher = Sha256::new();
-            hasher.update(self.encryption_key);
+            hasher.update(key);
             hasher.update(nonce);
             hasher.update(counter.to_le_bytes());
             let block = hasher.finalize();
@@ -203,17 +208,11 @@ impl PrivacyVault {
             .write()
             .map_err(|e| format!("Failed to acquire write lock: {}", e))?;
 
-        let old_key = self.encryption_key;
+        let old_key = *self.encryption_key.read().unwrap();
         let mut total_re_encrypted = 0;
 
-        let old_vault = PrivacyVault {
-            storage: Arc::new(RwLock::new(HashMap::new())),
-            encryption_key: old_key,
-        };
-        let new_vault = PrivacyVault {
-            storage: Arc::new(RwLock::new(HashMap::new())),
-            encryption_key: new_key,
-        };
+        let old_vault = PrivacyVault::with_key(old_key);
+        let new_vault = PrivacyVault::with_key(new_key);
 
         let session_ids: Vec<String> = storage.keys().cloned().collect();
 
@@ -232,6 +231,8 @@ impl PrivacyVault {
             }
         }
 
+        *self.encryption_key.write().unwrap() = new_key;
+
         Ok(total_re_encrypted)
     }
 }
@@ -246,7 +247,7 @@ impl Clone for PrivacyVault {
     fn clone(&self) -> Self {
         Self {
             storage: Arc::clone(&self.storage),
-            encryption_key: self.encryption_key,
+            encryption_key: Arc::clone(&self.encryption_key),
         }
     }
 }

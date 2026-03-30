@@ -4,7 +4,7 @@ pub fn hash_value(value: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(value.as_bytes());
     let result = hasher.finalize();
-    format!("[HASH:{}]", hex::encode(&result[..8]))
+    format!("[HASH:{}]", hex::encode(&result[..16]))
 }
 
 mod hex {
@@ -53,7 +53,7 @@ mod tests {
         assert!(hashed.starts_with("[HASH:"));
         assert!(hashed.ends_with("]"));
         let hex_part = &hashed[6..hashed.len() - 1];
-        assert_eq!(hex_part.len(), 16);
+        assert_eq!(hex_part.len(), 32);
         assert!(hex_part.chars().all(|c| c.is_ascii_hexdigit()));
     }
 
@@ -86,6 +86,6 @@ mod tests {
         let hashed = hash_value(&value);
         assert!(hashed.starts_with("[HASH:"));
         let hex_part = &hashed[6..hashed.len() - 1];
-        assert_eq!(hex_part.len(), 16);
+        assert_eq!(hex_part.len(), 32);
     }
 }
