@@ -1,7 +1,9 @@
-use crate::detector::PIIType;
 use crate::vault::PrivacyVault;
 use regex::Regex;
 use std::collections::HashSet;
+use std::sync::OnceLock;
+
+static REDACTION_PATTERNS: OnceLock<Vec<Regex>> = OnceLock::new();
 
 pub struct Reverser {
     vault: PrivacyVault,
@@ -27,57 +29,92 @@ impl Reverser {
         let mut result = body.to_string();
         let mut offset: i64 = 0;
 
-        let patterns = self.get_restore_patterns();
+        let patterns = REDACTION_PATTERNS.get_or_init(|| {
+            vec![
+                Regex::new(r"\[REDACTED_CHINESE_ID_\d+\]").unwrap(),
+                Regex::new(r"\[REDACTED_PHONE_NUMBER_\d+\]").unwrap(),
+                Regex::new(r"\[REDACTED_CREDIT_CARD_\d+\]").unwrap(),
+                Regex::new(r"\[REDACTED_EMAIL_\d+\]").unwrap(),
+                Regex::new(r"\[REDACTED_IP_ADDRESS_\d+\]").unwrap(),
+                Regex::new(r"\[REDACTED_DATABASE_CONNECTION_STRING_\d+\]").unwrap(),
+                Regex::new(r"\[REDACTED_JWT_\d+\]").unwrap(),
+                Regex::new(r"\[REDACTED_API_KEY_\d+\]").unwrap(),
+                Regex::new(r"\[REDACTED_API_SECRET_\d+\]").unwrap(),
+                Regex::new(r"\[REDACTED_AWS_ACCESS_KEY_\d+\]").unwrap(),
+                Regex::new(r"\[REDACTED_AWS_SECRET_KEY_\d+\]").unwrap(),
+                Regex::new(r"\[REDACTED_GITHUB_TOKEN_\d+\]").unwrap(),
+                Regex::new(r"\[REDACTED_NER_PERSON_\d+\]").unwrap(),
+                Regex::new(r"\[REDACTED_NER_LOCATION_\d+\]").unwrap(),
+                Regex::new(r"\[REDACTED_NER_ORGANIZATION_\d+\]").unwrap(),
+                Regex::new(r"\[HASH:[a-f0-9]{32}\]").unwrap(),
+            ]
+        });
 
-        for pattern in patterns {
-            let re = Regex::new(&pattern.0).map_err(|e| format!("Invalid regex: {}", e))?;
+        let mut all_matches: Vec<(usize, usize, String)> = Vec::new();
 
-            let matches: Vec<_> = re
-                .find_iter(&result)
-                .map(|m| (m.start(), m.end(), m.as_str().to_string()))
-                .collect();
+        for re in patterns.iter() {
+            for m in re.find_iter(&result) {
+                all_matches.push((m.start(), m.end(), m.as_str().to_string()));
+            }
+        }
 
-            for (start, end, token) in matches.into_iter().rev() {
-                if !allowed_tokens.contains(&token) {
-                    continue;
+        for token in allowed_tokens {
+            if !token.chars().all(|c| c.is_ascii_digit()) {
+                continue;
+            }
+            let escaped = regex::escape(token);
+            if let Ok(re) = Regex::new(&format!(r"\b{}\b", escaped)) {
+                for m in re.find_iter(&result) {
+                    all_matches.push((m.start(), m.end(), m.as_str().to_string()));
                 }
-                if let Some(original) = self.vault.retrieve(session_id, &token)? {
-                    let adj_start = (start as i64 + offset) as usize;
-                    let adj_end = (end as i64 + offset) as usize;
-                    result.replace_range(adj_start..adj_end, &original);
-                    offset += original.len() as i64 - (end - start) as i64;
-                }
+            }
+        }
+
+        all_matches.sort_by_key(|&(start, _, _)| start);
+
+        for (start, end, token) in all_matches.into_iter().rev() {
+            if !allowed_tokens.contains(&token) {
+                continue;
+            }
+            if let Some(original) = self.vault.retrieve(session_id, &token)? {
+                let adj_start = (start as i64 + offset) as usize;
+                let adj_end = (end as i64 + offset) as usize;
+                result.replace_range(adj_start..adj_end, &original);
+                offset += original.len() as i64 - (end - start) as i64;
             }
         }
 
         Ok(result)
     }
 
-    fn get_restore_patterns(&self) -> Vec<(String, PIIType)> {
-        vec![
-            (r"\b\d{18}\b".to_string(), PIIType::ChineseID),
-            (r"\b1[3-9]\d{9}\b".to_string(), PIIType::PhoneNumber),
-            (r"\[REDACTED_EMAIL_\d+\]".to_string(), PIIType::Email),
-            (r"\[HASH:[a-f0-9]{16}\]".to_string(), PIIType::APIKey),
-        ]
-    }
-
     pub fn find_tokens_in_text(&self, text: &str) -> HashSet<String> {
         let mut tokens = HashSet::new();
 
-        let fpe_pattern = Regex::new(r"\b\d{18}\b").unwrap();
-        for m in fpe_pattern.find_iter(text) {
-            tokens.insert(m.as_str().to_string());
-        }
+        let patterns = REDACTION_PATTERNS.get_or_init(|| {
+            vec![
+                Regex::new(r"\[REDACTED_CHINESE_ID_\d+\]").unwrap(),
+                Regex::new(r"\[REDACTED_PHONE_NUMBER_\d+\]").unwrap(),
+                Regex::new(r"\[REDACTED_CREDIT_CARD_\d+\]").unwrap(),
+                Regex::new(r"\[REDACTED_EMAIL_\d+\]").unwrap(),
+                Regex::new(r"\[REDACTED_IP_ADDRESS_\d+\]").unwrap(),
+                Regex::new(r"\[REDACTED_DATABASE_CONNECTION_STRING_\d+\]").unwrap(),
+                Regex::new(r"\[REDACTED_JWT_\d+\]").unwrap(),
+                Regex::new(r"\[REDACTED_API_KEY_\d+\]").unwrap(),
+                Regex::new(r"\[REDACTED_API_SECRET_\d+\]").unwrap(),
+                Regex::new(r"\[REDACTED_AWS_ACCESS_KEY_\d+\]").unwrap(),
+                Regex::new(r"\[REDACTED_AWS_SECRET_KEY_\d+\]").unwrap(),
+                Regex::new(r"\[REDACTED_GITHUB_TOKEN_\d+\]").unwrap(),
+                Regex::new(r"\[REDACTED_NER_PERSON_\d+\]").unwrap(),
+                Regex::new(r"\[REDACTED_NER_LOCATION_\d+\]").unwrap(),
+                Regex::new(r"\[REDACTED_NER_ORGANIZATION_\d+\]").unwrap(),
+                Regex::new(r"\[HASH:[a-f0-9]{32}\]").unwrap(),
+            ]
+        });
 
-        let email_pattern = Regex::new(r"\[REDACTED_EMAIL_\d+\]").unwrap();
-        for m in email_pattern.find_iter(text) {
-            tokens.insert(m.as_str().to_string());
-        }
-
-        let hash_pattern = Regex::new(r"\[HASH:[a-f0-9]{16}\]").unwrap();
-        for m in hash_pattern.find_iter(text) {
-            tokens.insert(m.as_str().to_string());
+        for re in patterns.iter() {
+            for m in re.find_iter(text) {
+                tokens.insert(m.as_str().to_string());
+            }
         }
 
         tokens
@@ -114,15 +151,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_find_tokens_fpe() {
+    fn test_find_tokens_does_not_match_raw_fpe_numbers() {
         let vault = PrivacyVault::new();
         let reverser = Reverser::new(vault, [0u8; 32]);
 
-        let text = "Encrypted ID: 165455343746803619 and another: 284759384726584920";
+        let text = "Raw FPE numbers: 165455343746803619 and 284759384726584920";
         let tokens = reverser.find_tokens_in_text(text);
 
-        assert!(tokens.contains("165455343746803619"));
-        assert!(tokens.contains("284759384726584920"));
+        assert!(!tokens.contains("165455343746803619"));
+        assert!(!tokens.contains("284759384726584920"));
     }
 
     #[test]
@@ -130,15 +167,16 @@ mod tests {
         let vault = PrivacyVault::new();
         let reverser = Reverser::new(vault, [0u8; 32]);
 
-        let text = "Hashed values: [HASH:e0b7453469e42b48] and [REDACTED_EMAIL_001]";
+        let text =
+            "Hashed values: [HASH:e0b7453469e42b48e0b7453469e42b48] and [REDACTED_EMAIL_001]";
         let tokens = reverser.find_tokens_in_text(text);
 
-        assert!(tokens.contains("[HASH:e0b7453469e42b48]"));
+        assert!(tokens.contains("[HASH:e0b7453469e42b48e0b7453469e42b48]"));
         assert!(tokens.contains("[REDACTED_EMAIL_001]"));
     }
 
     #[test]
-    fn test_restore_response_basic() {
+    fn test_restore_response_with_allowlist_fpe() {
         let vault = PrivacyVault::new();
         vault
             .store(
@@ -150,8 +188,12 @@ mod tests {
 
         let reverser = Reverser::new(vault, [0u8; 32]);
         let body = r#"{"id":"165455343746803619","type":"user"}"#;
+        let allowlist: HashSet<String> =
+            vec!["165455343746803619".to_string()].into_iter().collect();
 
-        let restored = reverser.restore_response("session1", body).unwrap();
+        let restored = reverser
+            .restore_response_with_allowlist("session1", body, &allowlist)
+            .unwrap();
 
         assert!(restored.contains("110101199001011234"));
         assert!(!restored.contains("165455343746803619"));
@@ -178,7 +220,7 @@ mod tests {
     }
 
     #[test]
-    fn test_restore_response_multiple_tokens() {
+    fn test_restore_response_multiple_tokens_with_allowlist() {
         let vault = PrivacyVault::new();
         vault
             .store(
@@ -197,8 +239,16 @@ mod tests {
 
         let reverser = Reverser::new(vault, [0u8; 32]);
         let body = r#"{"id":"165455343746803619","email":"[REDACTED_EMAIL_001]"}"#;
+        let allowlist: HashSet<String> = vec![
+            "165455343746803619".to_string(),
+            "[REDACTED_EMAIL_001]".to_string(),
+        ]
+        .into_iter()
+        .collect();
 
-        let restored = reverser.restore_response("session1", body).unwrap();
+        let restored = reverser
+            .restore_response_with_allowlist("session1", body, &allowlist)
+            .unwrap();
 
         assert!(restored.contains("110101199001011234"));
         assert!(restored.contains("test@example.com"));

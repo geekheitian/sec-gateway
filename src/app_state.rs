@@ -1,0 +1,32 @@
+use std::{
+    collections::HashMap,
+    sync::{atomic::AtomicU64, Arc, Mutex},
+    time::Instant,
+};
+
+use crate::{
+    audit::FileAppender,
+    config::Config,
+    crypto::fpe_trait::DynFpeBackend,
+    provider::Provider,
+    vault::{PrivacyVault, Reverser},
+};
+
+#[derive(Clone)]
+pub struct AppState {
+    pub provider: Arc<dyn Provider>,
+    pub config: Arc<Config>,
+    pub vault: PrivacyVault,
+    pub fpe_cipher: DynFpeBackend,
+    pub reverser: Reverser,
+    pub rate_limiter: Arc<Mutex<HashMap<String, (u32, Instant)>>>,
+    pub metrics: Arc<MetricsState>,
+    pub audit_appender: Option<Arc<FileAppender>>,
+}
+
+#[derive(Default)]
+pub struct MetricsState {
+    pub total_requests: AtomicU64,
+    pub blocked_requests: AtomicU64,
+    pub pii_detected_requests: AtomicU64,
+}
