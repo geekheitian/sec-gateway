@@ -2,7 +2,6 @@ use chrono::{DateTime, Utc};
 use rand::{rngs::OsRng, RngCore};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
-use std::time::Instant;
 
 use sha2::{Digest, Sha256};
 
@@ -17,7 +16,7 @@ pub struct SessionMetadata {
     pub request_count: u64,
 }
 
-type SessionData = (HashMap<String, Vec<u8>>, Instant, SessionMetadata);
+type SessionData = (HashMap<String, Vec<u8>>, SessionMetadata);
 
 pub struct PrivacyVault {
     storage: Arc<RwLock<HashMap<String, SessionData>>>,
@@ -95,7 +94,6 @@ impl PrivacyVault {
             let now = Utc::now();
             (
                 HashMap::new(),
-                Instant::now(),
                 SessionMetadata {
                     created_at: now,
                     last_accessed: now,
@@ -104,8 +102,8 @@ impl PrivacyVault {
             )
         });
 
-        session.2.last_accessed = Utc::now();
-        session.2.request_count += 1;
+        session.1.last_accessed = Utc::now();
+        session.1.request_count += 1;
 
         let ciphertext = self.xor_crypt(session_id, token.as_str(), original_value.as_bytes());
         session.0.insert(token, ciphertext);
@@ -114,17 +112,26 @@ impl PrivacyVault {
     }
 
     pub fn retrieve(&self, session_id: &str, token: &str) -> Result<Option<String>, String> {
-        let storage = self
+        let mut storage = self
             .storage
-            .read()
-            .map_err(|e| format!("Failed to acquire read lock: {}", e))?;
+            .write()
+            .map_err(|e| format!("Failed to acquire write lock: {}", e))?;
 
-        Ok(storage
+        let result = storage
             .get(session_id)
             .and_then(|session| session.0.get(token))
             .map(|ciphertext| self.xor_crypt(session_id, token, ciphertext))
             .map(|plaintext| String::from_utf8(plaintext).map_err(|e| e.to_string()))
-            .transpose()?)
+            .transpose()?;
+
+        // Update last_accessed timestamp on successful retrieval
+        if result.is_some() {
+            if let Some(session) = storage.get_mut(session_id) {
+                session.1.last_accessed = Utc::now();
+            }
+        }
+
+        Ok(result)
     }
 
     pub fn clear_session(&self, session_id: &str) -> Result<(), String> {
@@ -137,8 +144,8 @@ impl PrivacyVault {
         Ok(())
     }
 
-    pub fn cleanup_stale_sessions(&self, max_age_secs: u64) -> usize {
-        let cutoff = Instant::now() - std::time::Duration::from_secs(max_age_secs);
+    pub fn cleanup_stale_sessions(&self, max_idle_secs: u64) -> usize {
+        let cutoff = Utc::now() - chrono::Duration::seconds(max_idle_secs as i64);
         let mut storage = match self.storage.write() {
             Ok(s) => s,
             Err(_) => return 0,
@@ -146,7 +153,7 @@ impl PrivacyVault {
 
         let stale: Vec<String> = storage
             .iter()
-            .filter(|(_, (_, created, _))| *created < cutoff)
+            .filter(|(_, (_, metadata))| metadata.last_accessed < cutoff)
             .map(|(sid, _)| sid.clone())
             .collect();
 
@@ -168,7 +175,7 @@ impl PrivacyVault {
 
         Ok(storage
             .get(session_id)
-            .map(|(_, _, metadata)| metadata.clone()))
+            .map(|(_, metadata)| metadata.clone()))
     }
 
     pub fn list_all_sessions(&self) -> Result<HashMap<String, SessionMetadata>, String> {
@@ -179,7 +186,7 @@ impl PrivacyVault {
 
         Ok(storage
             .iter()
-            .map(|(sid, (_, _, metadata))| (sid.clone(), metadata.clone()))
+            .map(|(sid, (_, metadata))| (sid.clone(), metadata.clone()))
             .collect())
     }
 
@@ -217,7 +224,7 @@ impl PrivacyVault {
         let session_ids: Vec<String> = storage.keys().cloned().collect();
 
         for session_id in session_ids {
-            if let Some((tokens, _created, _metadata)) = storage.get_mut(&session_id) {
+            if let Some((tokens, _metadata)) = storage.get_mut(&session_id) {
                 let token_keys: Vec<String> = tokens.keys().cloned().collect();
 
                 for token in token_keys {

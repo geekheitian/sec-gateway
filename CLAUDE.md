@@ -192,4 +192,30 @@ Keys are 32 bytes (AES) or 16 bytes (SM4), hex-encoded in env vars. Auto-generat
 - Cryptographically secure random source (`/dev/urandom` via `OsRng`)
 - Consistent with vault/key_rotation modules' security practices
 
-**Verification**: cargo build successful, ready for testing.
+**Verification**: All 287 tests passing, cargo build successful.
+
+### Session TTL Fix (Current Commit)
+
+**Main Goals**: Fix session expiry logic to use sliding-window TTL instead of absolute expiry.
+
+**Problem**: Sessions were unconditionally cleaned up after `ttl_seconds` from creation, even if actively used.
+
+**Changes**:
+1. **SessionData Type Refactoring (`src/vault/mod.rs:20`)**:
+   - **Before**: `type SessionData = (HashMap<String, Vec<u8>>, Instant, SessionMetadata);` (3 fields)
+   - **After**: `type SessionData = (HashMap<String, Vec<u8>>, SessionMetadata);` (2 fields)
+   - **Removed**: Redundant `Instant` field that duplicated `SessionMetadata.created_at`
+   - **Impact**: Eliminates data redundancy, uses `DateTime<Utc>` for consistent time tracking
+
+2. **Retrieve Method Updates (`src/vault/mod.rs:116-137`)**:
+   - **Before**: Used read-only lock, never updated `last_accessed` timestamp
+   - **After**: Uses write lock to update `session.1.last_accessed = Utc::now()` on every retrieval
+   - **Impact**: Sessions now track actual usage, enabling proper sliding-window TTL
+
+3. **Cleanup Logic Fix (`src/vault/mod.rs:140-158`)**:
+   - **Before**: Compared `Instant` creation time → absolute expiry
+   - **After**: Compares `metadata.last_accessed` → idle expiry (sliding window)
+   - **Parameter Rename**: `max_age_secs` → `max_idle_secs` (semantic clarity)
+   - **Impact**: Active sessions no longer expire, only idle sessions cleaned up
+
+**Verification**: All 287 tests passing, cargo build successful.
