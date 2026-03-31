@@ -129,12 +129,36 @@ async fn main() {
                 key
             }
             Err(_) => {
-                let key: [u8; N] = [0; N].map(|_| rand::random::<u8>());
+                use rand::{rngs::OsRng, RngCore};
+                
+                // Use cryptographically secure random source
+                let mut key = [0u8; N];
+                OsRng.fill_bytes(&mut key);
+                
                 let hex_key = key.iter()
                     .map(|b| format!("{:02x}", b))
                     .collect::<String>();
-                tracing::warn!("{} not set, auto-generated new key: {}", env_var, hex_key);
-                tracing::warn!("IMPORTANT: Save this key! It cannot be recovered if lost.");
+                
+                // Write key to local file (secure alternative to logging)
+                let key_file = format!(".sec-gateway-{}.key", key_type.to_lowercase());
+                match std::fs::write(&key_file, &hex_key) {
+                    Ok(_) => {
+                        // Set file permissions to 600 (owner read/write only)
+                        #[cfg(unix)]
+                        {
+                            use std::os::unix::fs::PermissionsExt;
+                            let _ = std::fs::set_permissions(&key_file, std::fs::Permissions::from_mode(0o600));
+                        }
+                        tracing::warn!("{} not set, auto-generated and saved to: {}", env_var, key_file);
+                        tracing::warn!("IMPORTANT: Save this key file securely! Set {}={} or keep the .key file", env_var, hex_key);
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to write key file {}: {}", key_file, e);
+                        tracing::warn!("{} not set, auto-generated. Set {}={}", env_var, env_var, hex_key);
+                        tracing::warn!("IMPORTANT: Save this key! It cannot be recovered if lost.");
+                    }
+                }
+                
                 key
             }
         }

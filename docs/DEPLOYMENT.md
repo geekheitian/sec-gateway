@@ -72,14 +72,27 @@ ls -lh /tmp/wbcrypto-mode/build/out/libwbcrypto.a
 
 ### 自动生成（推荐）
 
-首次启动时，密钥会自动生成并打印到日志：
+首次启动时，密钥会自动生成并保存到本地文件：
 
 ```
-WARN sec_gateway: FPE_KEY not set, auto-generated new key: a1b2c3d4e5f6...
-WARN sec_gateway: IMPORTANT: Save this key! It cannot be recovered if lost.
+WARN sec_gateway: FPE_KEY not set, auto-generated and saved to: .sec-gateway-aes.key
+WARN sec_gateway: IMPORTANT: Save this key file securely! Set FPE_KEY=<hex> or keep the .key file
 ```
 
-**请务必保存日志中的密钥**，如果丢失将无法解密已加密的数据。
+**密钥文件位置**：
+- AES-256: `.sec-gateway-aes.key` (64 hex chars)
+- SM4-128: `.sec-gateway-sm4.key` (32 hex chars)
+
+**安全说明**：
+- 密钥文件权限自动设置为 `600`（仅所有者可读写）
+- 文件已加入 `.gitignore`，不会被提交到版本控制
+- **请务必备份密钥文件**，如果丢失将无法解密已加密的数据
+
+**读取密钥文件并设置环境变量**：
+```bash
+export FPE_KEY=$(cat .sec-gateway-aes.key)
+export SM4_FPE_KEY=$(cat .sec-gateway-sm4.key)
+```
 
 ### 手动指定密钥（可选）
 
@@ -249,15 +262,21 @@ cargo bench --bench fpe_benchmark
 
 ### 密钥丢失
 
-如果启动时未保存自动生成的密钥，将无法解密已有数据。
+如果密钥文件丢失或未保存，将无法解密已有数据。
 
 **解决方案**:
 1. 停止服务
 2. 删除 Vault 数据（内存中的会话数据）
-3. 重启服务（会自动生成新密钥）
-4. 重新测试
+3. 删除旧密钥文件: `rm .sec-gateway-*.key`
+4. 重启服务（会自动生成新密钥）
+5. 备份新生成的密钥文件
 
 注意：这会导致之前加密的数据无法恢复。
+
+**预防措施**:
+- 首次启动后立即备份 `.sec-gateway-*.key` 文件
+- 使用环境变量 `FPE_KEY` / `SM4_FPE_KEY` 显式指定密钥
+- 生产环境使用密钥管理服务（AWS KMS / HashiCorp Vault）
 
 ### 测试失败: `Plaintext length must be at least 6`
 
@@ -268,16 +287,23 @@ SM4-FF1 要求明文长度 ≥ 6 字符。检查测试用例是否使用了过�
 ## 安全建议
 
 1. **密钥管理**:
-   - 生产环境使用密钥管理服务（AWS KMS / HashiCorp Vault）
+   - **开发环境**: 使用自动生成的密钥文件（`.sec-gateway-*.key`）
+   - **生产环境**: 使用环境变量显式指定密钥，或集成密钥管理服务（AWS KMS / HashiCorp Vault）
    - 切勿在代码或配置文件中硬编码密钥
    - 定期轮换密钥（推荐 90 天）
+   - 备份密钥文件到安全位置（加密存储）
 
-2. **后端选择**:
+2. **密钥生成安全性**:
+   - 使用密码学安全的随机源 `OsRng`（基于 `/dev/urandom`）
+   - 密钥文件权限自动设置为 `600`（仅所有者可读写）
+   - 避免将密钥打印到日志（防止泄露到日志聚合服务）
+
+3. **后端选择**:
    - **合规要求**: 中国大陆项目建议使用 SM4-FF1（符合 GB/T 32907）
    - **国际项目**: 使用 AES-FF1（NIST 标准）
    - **性能敏感**: AES-FF1 性能略优（9.5% faster）
 
-3. **测试覆盖**:
+4. **测试覆盖**:
    ```bash
    cargo test
    cargo bench --bench fpe_benchmark

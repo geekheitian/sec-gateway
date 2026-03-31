@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
 ## Project Overview
 
@@ -169,27 +169,3 @@ Keys are 32 bytes (AES) or 16 bytes (SM4), hex-encoded in env vars. Auto-generat
 **Verification**: All 287 tests passing, cargo build successful.
 
 **Related Documentation**: See `PHASE2C_VERIFICATION_REPORT.md` for detailed security analysis.
-
-### FPE Key Generation Hardening (Current Commit)
-
-**Main Goals**: Eliminate weak random source and prevent key material leakage to logs.
-
-**Changes**:
-1. **Random Source Upgrade (`src/main.rs:get_or_generate_key`)**:
-   - **Before**: Used `rand::random::<u8>()` (thread-local PRNG)
-   - **After**: Use cryptographically secure `OsRng` from `rand` crate
-   - **Impact**: Eliminates predictability risks in containerized/virtualized environments, consistent with other modules
-
-2. **Key Distribution Strategy (`src/main.rs:get_or_generate_key`)**:
-   - **Before**: Printed key to `tracing::warn!()` logs (risk: log aggregation services, persistent storage)
-   - **After**: Write key to local file (`.sec-gateway-aes.key` / `.sec-gateway-sm4.key`) with `600` permissions
-   - **Fallback**: If file write fails, log key with explicit warning (development-only scenario)
-   - **Impact**: Prevents key leakage to centralized logging systems (ELK, Splunk, CloudWatch), maintains development ease-of-use
-
-**Security Properties**:
-- Key files auto-created with owner-only permissions (`chmod 600`)
-- Files excluded from version control via `.gitignore` (already contained `*.key` pattern)
-- Cryptographically secure random source (`/dev/urandom` via `OsRng`)
-- Consistent with vault/key_rotation modules' security practices
-
-**Verification**: cargo build successful, ready for testing.
