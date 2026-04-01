@@ -16,8 +16,9 @@ use axum::{
 use std::{
     collections::HashMap,
     net::SocketAddr,
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
+use tokio::sync::Mutex;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use app_state::{AppState, MetricsState};
@@ -114,7 +115,7 @@ async fn main() {
     tracing::info!("PII types enabled: {:?}", config.pii.types);
     tracing::info!("FPE backend: {}", config.crypto.fpe.backend);
 
-    fn get_or_generate_key<const N: usize>(env_var: &str, key_type: &str) -> [u8; N] {
+    fn get_or_generate_key<const N: usize>(env_var: &str, key_file_suffix: &str) -> [u8; N] {
         match std::env::var(env_var) {
             Ok(key_str) => {
                 let key_bytes = key_str.as_bytes();
@@ -140,7 +141,7 @@ async fn main() {
                     .collect::<String>();
                 
                 // Write key to local file (secure alternative to logging)
-                let key_file = format!(".sec-gateway-{}.key", key_type.to_lowercase());
+                let key_file = format!(".sec-gateway-{}.key", key_file_suffix);
                 match std::fs::write(&key_file, &hex_key) {
                     Ok(_) => {
                         // Set file permissions to 600 (owner read/write only)
@@ -166,7 +167,7 @@ async fn main() {
 
     let (fpe_cipher, vault_key): (crypto::fpe_trait::DynFpeBackend, [u8; 32]) = match config.crypto.fpe.backend.as_str() {
         "sm4" => {
-            let sm4_key = get_or_generate_key::<16>("SM4_FPE_KEY", "SM4");
+            let sm4_key = get_or_generate_key::<16>("SM4_FPE_KEY", "sm4");
             use crypto::fpe_trait::create_sm4_backend;
             let cipher = create_sm4_backend(&sm4_key, config.crypto.fpe.radix)
                 .expect("Failed to initialize SM4-FF1 backend");
@@ -176,7 +177,7 @@ async fn main() {
             (cipher, vault_key)
         }
         "aes" | _ => {
-            let aes_key = get_or_generate_key::<32>("FPE_KEY", "AES");
+            let aes_key = get_or_generate_key::<32>("FPE_KEY", "aes");
             use crypto::fpe_trait::create_aes_backend;
             let cipher = create_aes_backend(&aes_key, config.crypto.fpe.radix)
                 .expect("Failed to initialize AES-FF1 backend");
@@ -203,7 +204,16 @@ async fn main() {
     });
 
     let reverser = Reverser::new(vault.clone(), vault_key);
-    let provider: Arc<dyn provider::Provider> = ProviderFactory::build(config.provider.kind.clone(), config.provider.target_url.clone()).into();
+    let provider: Arc<dyn provider::Provider> = match ProviderFactory::build(
+        config.provider.kind.clone(),
+        config.provider.target_url.clone(),
+    ) {
+        Ok(provider) => provider.into(),
+        Err(e) => {
+            tracing::error!("Failed to initialize provider transport: {}", e);
+            return;
+        }
+    };
     
     if config.security.key_rotation.enabled && config.security.key_rotation.auto_rotate {
         use crypto::key_rotation::KeyRotation;

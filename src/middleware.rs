@@ -1,9 +1,10 @@
 use axum::http::{header::AUTHORIZATION, HeaderValue, Method, StatusCode};
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex},
+    sync::Arc,
     time::{Duration, Instant},
 };
+use tokio::sync::Mutex;
 use tower_http::cors::{Any, CorsLayer};
 
 use crate::config::{AuthConfig, Config, CorsConfig, TlsConfig};
@@ -38,11 +39,13 @@ pub fn is_authorized(parts: &axum::http::request::Parts, config: &AuthConfig) ->
 }
 
 pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    let len = std::cmp::min(a.len(), b.len());
+    let len = std::cmp::max(a.len(), b.len());
     let mut diff = (a.len() != b.len()) as u8;
 
     for i in 0..len {
-        diff |= a[i] ^ b[i];
+        let ai = a.get(i).copied().unwrap_or(0);
+        let bi = b.get(i).copied().unwrap_or(0);
+        diff |= ai ^ bi;
     }
 
     diff == 0
@@ -72,7 +75,7 @@ pub fn client_id_from_parts(parts: &axum::http::request::Parts, config: &Config)
         .to_string()
 }
 
-pub fn check_rate_limit(
+pub async fn check_rate_limit(
     rate_limiter: &Arc<Mutex<HashMap<String, (u32, Instant)>>>,
     client_id: &str,
     requests_per_minute: u32,
@@ -82,12 +85,7 @@ pub fn check_rate_limit(
     let window = Duration::from_secs(60);
     let max_allowed = requests_per_minute.saturating_add(burst_size);
 
-    let mut limiter = rate_limiter.lock().map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Rate limiter lock poisoned".to_string(),
-        )
-    })?;
+    let mut limiter = rate_limiter.lock().await;
 
     let entry = limiter.entry(client_id.to_string()).or_insert((0, now));
     if now.duration_since(entry.1) >= window {
@@ -210,12 +208,20 @@ pub fn enforce_endpoint_auth(
 }
 
 pub fn extract_session_id(parts: &axum::http::request::Parts) -> String {
-    parts
+    const MAX_SESSION_ID_LEN: usize = 128;
+
+    let candidate = parts
         .headers
         .get("x-session-id")
         .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string())
+        .filter(|s| !s.is_empty() && s.len() <= MAX_SESSION_ID_LEN)
+        .filter(|s| {
+            s.chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+        })
+        .map(|s| s.to_string());
+
+    candidate.unwrap_or_else(|| uuid::Uuid::new_v4().to_string())
 }
 
 #[cfg(test)]

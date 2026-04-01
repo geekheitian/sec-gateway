@@ -10,11 +10,11 @@ pub struct OpenAIProvider {
 }
 
 impl OpenAIProvider {
-    pub fn new(target_url: String) -> Self {
-        Self {
-            transport: HttpTransport::new(Duration::from_secs(120)),
+    pub fn new(target_url: String) -> Result<Self, ProviderError> {
+        Ok(Self {
+            transport: HttpTransport::new(Duration::from_secs(120))?,
             target_url,
-        }
+        })
     }
 
     fn request_body(&self, request: &ProviderRequest, stream: bool) -> bytes::Bytes {

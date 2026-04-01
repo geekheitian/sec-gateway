@@ -10,11 +10,11 @@ pub struct AnthropicProvider {
 }
 
 impl AnthropicProvider {
-    pub fn new(target_url: String) -> Self {
-        Self {
-            transport: HttpTransport::new(Duration::from_secs(120)),
+    pub fn new(target_url: String) -> Result<Self, ProviderError> {
+        Ok(Self {
+            transport: HttpTransport::new(Duration::from_secs(120))?,
             target_url,
-        }
+        })
     }
 
     fn transform_request(&self, request: &ProviderRequest, stream: bool) -> serde_json::Value {
@@ -91,7 +91,8 @@ mod tests {
 
     #[test]
     fn test_transform_request_non_stream() {
-        let provider = AnthropicProvider::new("https://api.anthropic.com/v1/messages".to_string());
+        let provider = AnthropicProvider::new("https://api.anthropic.com/v1/messages".to_string())
+            .expect("provider init should succeed");
         let body = provider.transform_request(&sample_request(), false);
 
         assert_eq!(body["model"], serde_json::json!("claude-3-5-sonnet"));
@@ -102,11 +103,13 @@ mod tests {
 
     #[test]
     fn test_request_body_stream_flag() {
-        let provider = AnthropicProvider::new("https://api.anthropic.com/v1/messages".to_string());
+        let provider = AnthropicProvider::new("https://api.anthropic.com/v1/messages".to_string())
+            .expect("provider init should succeed");
         let request = sample_request();
 
         let body = provider.request_body(&request, true);
-        let parsed: serde_json::Value = serde_json::from_slice(&body).expect("valid json body");
+        let parsed: serde_json::Value = serde_json::from_slice(&body)
+            .unwrap_or_else(|e| panic!("request body should always be valid JSON, parse error: {}", e));
         assert_eq!(parsed["stream"], serde_json::json!(true));
     }
 }

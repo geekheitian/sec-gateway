@@ -98,14 +98,18 @@ pub async fn proxy_handler(
         &client_id,
         state.config.security.rate_limit.requests_per_minute,
         state.config.security.rate_limit.burst_size,
-    ).inspect_err(|_| {
+    )
+    .await
+    .inspect_err(|_| {
         state
             .metrics
             .blocked_requests
             .fetch_add(1, Ordering::Relaxed);
     })?;
 
-    let body_bytes = axum::body::to_bytes(body, usize::MAX).await.map_err(|e| {
+    const MAX_REQUEST_BODY_BYTES: usize = 10 * 1024 * 1024;
+
+    let body_bytes = axum::body::to_bytes(body, MAX_REQUEST_BODY_BYTES).await.map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
             format!("Failed to read body: {}", e),

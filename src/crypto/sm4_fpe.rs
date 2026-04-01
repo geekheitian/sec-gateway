@@ -138,7 +138,10 @@ impl Sm4FpeCipher {
         let output_len = plaintext.len() + 1;
         let mut output = vec![0u8; output_len];
 
-        let sm4_handle = self.sm4.lock().unwrap();
+        let sm4_handle = self
+            .sm4
+            .lock()
+            .map_err(|_| "SM4 context mutex poisoned during encryption".to_string())?;
 
         unsafe {
             let tweak_cstr = if tweak.is_empty() {
@@ -185,7 +188,10 @@ impl Sm4FpeCipher {
         let output_len = ciphertext.len() + 1;
         let mut output = vec![0u8; output_len];
 
-        let sm4_handle = self.sm4.lock().unwrap();
+        let sm4_handle = self
+            .sm4
+            .lock()
+            .map_err(|_| "SM4 context mutex poisoned during decryption".to_string())?;
 
         unsafe {
             let tweak_cstr = if tweak.is_empty() {

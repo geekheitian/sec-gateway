@@ -27,7 +27,6 @@ impl Reverser {
         allowed_tokens: &HashSet<String>,
     ) -> Result<String, String> {
         let mut result = body.to_string();
-        let mut offset: i64 = 0;
 
         let patterns = REDACTION_PATTERNS.get_or_init(|| {
             vec![
@@ -77,10 +76,7 @@ impl Reverser {
                 continue;
             }
             if let Some(original) = self.vault.retrieve(session_id, &token)? {
-                let adj_start = (start as i64 + offset) as usize;
-                let adj_end = (end as i64 + offset) as usize;
-                result.replace_range(adj_start..adj_end, &original);
-                offset += original.len() as i64 - (end - start) as i64;
+                result.replace_range(start..end, &original);
             }
         }
 
@@ -326,5 +322,40 @@ mod tests {
         assert!(restored.contains("value2"));
         assert!(restored.contains("value3"));
         assert_eq!(restored.len(), 3);
+    }
+
+    #[test]
+    fn test_restore_response_with_allowlist_multiple_reverse_replacement_lengths() {
+        let vault = PrivacyVault::new();
+        vault
+            .store(
+                "session1",
+                "165455343746803619".to_string(),
+                "110101199001011234".to_string(),
+            )
+            .unwrap();
+        vault
+            .store(
+                "session1",
+                "[REDACTED_EMAIL_001]".to_string(),
+                "alice.very.long@example.com".to_string(),
+            )
+            .unwrap();
+
+        let reverser = Reverser::new(vault, [0u8; 32]);
+        let body = r#"{"id":"165455343746803619","email":"[REDACTED_EMAIL_001]"}"#;
+        let allowlist: HashSet<String> = vec![
+            "165455343746803619".to_string(),
+            "[REDACTED_EMAIL_001]".to_string(),
+        ]
+        .into_iter()
+        .collect();
+
+        let restored = reverser
+            .restore_response_with_allowlist("session1", body, &allowlist)
+            .unwrap();
+
+        assert!(restored.contains("110101199001011234"));
+        assert!(restored.contains("alice.very.long@example.com"));
     }
 }

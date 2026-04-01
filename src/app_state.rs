@@ -1,8 +1,9 @@
 use std::{
     collections::HashMap,
-    sync::{atomic::AtomicU64, Arc, Mutex},
+    sync::{atomic::AtomicU64, Arc},
     time::Instant,
 };
+use tokio::sync::Mutex;
 
 use crate::{
     audit::FileAppender,

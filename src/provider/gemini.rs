@@ -11,11 +11,11 @@ pub struct GeminiProvider {
 }
 
 impl GeminiProvider {
-    pub fn new(target_url: String) -> Self {
-        Self {
-            transport: HttpTransport::new(Duration::from_secs(120)),
+    pub fn new(target_url: String) -> Result<Self, ProviderError> {
+        Ok(Self {
+            transport: HttpTransport::new(Duration::from_secs(120))?,
             target_url,
-        }
+        })
     }
 
     fn request_body(&self, request: &ProviderRequest, stream: bool) -> bytes::Bytes {
@@ -91,9 +91,11 @@ mod tests {
 
     #[test]
     fn test_request_body_contains_contents_and_stream_flag() {
-        let provider = GeminiProvider::new("https://generativelanguage.googleapis.com/v1beta/models/gemini:generateContent".to_string());
+        let provider = GeminiProvider::new("https://generativelanguage.googleapis.com/v1beta/models/gemini:generateContent".to_string())
+            .expect("provider init should succeed");
         let body = provider.request_body(&sample_request(), true);
-        let parsed: serde_json::Value = serde_json::from_slice(&body).expect("valid json body");
+        let parsed: serde_json::Value = serde_json::from_slice(&body)
+            .unwrap_or_else(|e| panic!("request body should always be valid JSON, parse error: {}", e));
 
         assert_eq!(parsed["stream"], serde_json::json!(true));
         assert_eq!(parsed["contents"][0]["role"], serde_json::json!("user"));
@@ -105,7 +107,8 @@ mod tests {
         let provider = GeminiProvider::new(
             "https://generativelanguage.googleapis.com/v1beta/models/gemini:streamGenerateContent?key=abc"
                 .to_string(),
-        );
+        )
+        .expect("provider init should succeed");
         let url = provider.stream_url().expect("valid stream url");
 
         assert!(url.contains("alt=sse"));

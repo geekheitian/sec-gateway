@@ -9,12 +9,12 @@ pub struct HttpTransport {
 }
 
 impl HttpTransport {
-    pub fn new(timeout: Duration) -> Self {
+    pub fn new(timeout: Duration) -> Result<Self, ProviderError> {
         let client = Client::builder()
             .timeout(timeout)
             .build()
-            .expect("Failed to create reqwest client");
-        Self { client }
+            .map_err(|e| ProviderError::Transport(format!("failed to create reqwest client: {}", e)))?;
+        Ok(Self { client })
     }
 
     pub async fn send_bytes(
