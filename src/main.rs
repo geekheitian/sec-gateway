@@ -106,6 +106,11 @@ async fn main() {
                     enabled: false,
                     interval_days: 90,
                     auto_rotate: false,
+                    fpe_key_rotation: config::FpeKeyRotationConfig {
+                        enabled: false,
+                        interval_days: 90,
+                        retention_versions: 3,
+                    },
                 },
             },
         }
@@ -165,7 +170,7 @@ async fn main() {
         }
     }
 
-    let (fpe_cipher, vault_key): (crypto::fpe_trait::DynFpeBackend, [u8; 32]) = match config.crypto.fpe.backend.as_str() {
+    let (initial_fpe_backend, vault_key): (crypto::fpe_trait::DynFpeBackend, [u8; 32]) = match config.crypto.fpe.backend.as_str() {
         "sm4" => {
             let sm4_key = get_or_generate_key::<16>("SM4_FPE_KEY", "sm4");
             use crypto::fpe_trait::create_sm4_backend;
@@ -185,7 +190,10 @@ async fn main() {
         }
     };
 
-    tracing::info!("FPE backend initialized: {}", fpe_cipher.backend_name());
+    let fpe_cipher = Arc::new(crypto::versioned_fpe::VersionedFpeBackend::new(
+        initial_fpe_backend,
+    ));
+    tracing::info!("FPE backend initialized: {}", fpe_cipher.versioned_name());
 
     let vault = PrivacyVault::new();
 
@@ -243,6 +251,52 @@ async fn main() {
                             tracing::error!("Key rotation failed: {}", e);
                         }
                     }
+                }
+            }
+        });
+    }
+
+    let fpe_for_rotation = fpe_cipher.clone();
+    let fpe_rotation_enabled = config.security.key_rotation.fpe_key_rotation.enabled;
+    let _fpe_rotation_interval_days = config.security.key_rotation.fpe_key_rotation.interval_days;
+    let fpe_retention_versions = config.security.key_rotation.fpe_key_rotation.retention_versions;
+    let fpe_backend_type = config.crypto.fpe.backend.clone();
+    let fpe_radix = config.crypto.fpe.radix;
+
+    if fpe_rotation_enabled {
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(86400));
+            loop {
+                interval.tick().await;
+                use rand::{rngs::OsRng, RngCore};
+                use crate::crypto::fpe_trait::{create_aes_backend, create_sm4_backend};
+
+                let new_backend: crate::crypto::fpe_trait::DynFpeBackend = match fpe_backend_type.as_str() {
+                    "sm4" => {
+                        let mut key = [0u8; 16];
+                        OsRng.fill_bytes(&mut key);
+                        create_sm4_backend(&key, fpe_radix).unwrap_or_else(|e| {
+                            tracing::error!("Failed to create new SM4 FPE backend during rotation: {}", e);
+                            return create_sm4_backend(&[0u8; 16], fpe_radix).unwrap();
+                        })
+                    }
+                    _ => {
+                        let mut key = [0u8; 32];
+                        OsRng.fill_bytes(&mut key);
+                        create_aes_backend(&key, fpe_radix).unwrap_or_else(|e| {
+                            tracing::error!("Failed to create new AES FPE backend during rotation: {}", e);
+                            return create_aes_backend(&[0u8; 32], fpe_radix).unwrap();
+                        })
+                    }
+                };
+
+                let new_version = fpe_for_rotation.rotate(new_backend);
+                tracing::info!("FPE key rotated to version {}", new_version);
+
+                let current = fpe_for_rotation.current_version();
+                let to_remove = current.saturating_sub(fpe_retention_versions);
+                for v in 1..=to_remove {
+                    fpe_for_rotation.remove_version(v);
                 }
             }
         });

@@ -97,6 +97,18 @@ pub struct KeyRotationConfig {
     #[serde(default = "default_rotation_interval_days")]
     pub interval_days: u64,
     pub auto_rotate: bool,
+    #[serde(default)]
+    pub fpe_key_rotation: FpeKeyRotationConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct FpeKeyRotationConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_rotation_interval_days")]
+    pub interval_days: u64,
+    #[serde(default)]
+    pub retention_versions: u32,
 }
 
 fn default_rotation_interval_days() -> u64 {

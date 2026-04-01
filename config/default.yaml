@@ -84,3 +84,7 @@ security:
     enabled: false
     interval_days: 90
     auto_rotate: false
+    fpe_key_rotation:
+      enabled: false
+      interval_days: 90
+      retention_versions: 3

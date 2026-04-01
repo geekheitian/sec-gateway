@@ -8,7 +8,7 @@ use tokio::sync::Mutex;
 use crate::{
     audit::FileAppender,
     config::Config,
-    crypto::fpe_trait::DynFpeBackend,
+    crypto::versioned_fpe::VersionedFpeBackend,
     provider::Provider,
     vault::{PrivacyVault, Reverser},
 };
@@ -18,7 +18,7 @@ pub struct AppState {
     pub provider: Arc<dyn Provider>,
     pub config: Arc<Config>,
     pub vault: PrivacyVault,
-    pub fpe_cipher: DynFpeBackend,
+    pub fpe_cipher: Arc<VersionedFpeBackend>,
     pub reverser: Reverser,
     pub rate_limiter: Arc<Mutex<HashMap<String, (u32, Instant)>>>,
     pub metrics: Arc<MetricsState>,

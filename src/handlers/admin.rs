@@ -82,7 +82,7 @@ pub async fn metrics_handler(State(state): State<AppState>) -> Response {
         .metrics
         .pii_detected_requests
         .load(Ordering::Relaxed);
-    let fpe_backend = state.fpe_cipher.backend_name();
+    let fpe_backend = state.fpe_cipher.versioned_name();
 
     let body = format!(
         "# HELP sec_gateway_requests_total Total requests\n# TYPE sec_gateway_requests_total counter\nsec_gateway_requests_total {}\n# HELP sec_gateway_blocked_requests_total Blocked requests\n# TYPE sec_gateway_blocked_requests_total counter\nsec_gateway_blocked_requests_total {}\n# HELP sec_gateway_pii_detected_requests_total Requests with detected PII\n# TYPE sec_gateway_pii_detected_requests_total counter\nsec_gateway_pii_detected_requests_total {}\n# HELP sec_gateway_fpe_backend Current FPE backend\n# TYPE sec_gateway_fpe_backend gauge\nsec_gateway_fpe_backend{{backend=\"{}\"}} 1\n",
